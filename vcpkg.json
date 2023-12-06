@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "roguely",
+  "version": "1.0.0",
+  "dependencies": [
+    "magic-enum",
+    "boost-uuid",
+    "boost-ublas",
+    "fmt",
+    "sol2",
+    "sdl2",
+    "sdl2-image",
+    "sdl2-ttf",
+    {
+      "name": "sdl2-mixer",
+      "features": [ "mpg123" ]
+    },
+    "lua"
+  ]
+}
