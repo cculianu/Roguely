@@ -1,0 +1,16 @@
+AllowShortFunctionsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+ColumnLimit: 120
+AlwaysBreakTemplateDeclarations: Yes
+UseTab: Never
+BreakBeforeBraces: Attach
+ReflowComments: true
+IndentWidth: 4
+TabWidth: 4
+SortIncludes: true
+NamespaceIndentation: Inner
+PointerAlignment: Middle
+KeepEmptyLinesAtTheStartOfBlocks: false
+AccessModifierOffset: -4
