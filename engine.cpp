@@ -3,6 +3,8 @@
 #include <mutex>
 #include <queue>
 #include <random>
+#include <source_location>
+#include <stdexcept>
 
 namespace {
 std::mutex gen_mut;
@@ -442,8 +444,7 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
 } // namespace roguely::ecs
 
 namespace roguely::sprites {
-SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh,
-                         int sf) {
+SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh, int sf) {
     path = p;
     name = n;
     sprite_width = sw;
@@ -458,31 +459,38 @@ SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const s
     // println("scale factor: {}", scale_factor);
 
     auto tileset = IMG_Load(p.c_str());
+    if (!tileset) {
+        auto l = std::source_location::current();
+        throw std::runtime_error(std::format("Unable to load tileset \"{}\": {} [{}, line: {}]",
+                                             p.c_str(), SDL_GetError(), std::filesystem::path{l.file_name()}.filename().string(), l.line()));
+    }
     spritesheet_texture = SDL_CreateTextureFromSurface(renderer, tileset);
     int total_sprites_on_sheet = tileset->w / sw * tileset->h / sh;
-    sprites = std::make_unique<std::vector<std::shared_ptr<SDL_Rect>>>(0);
     // println("total sprites on sheet: {}", total_sprites_on_sheet);
 
     SDL_GetTextureColorMod(spritesheet_texture, &o_red, &o_green, &o_blue);
 
     for (int y = 0; y < total_sprites_on_sheet / (sw + sh); ++y) {
         for (int x = 0; x < total_sprites_on_sheet / (sw + sh); ++x) {
-            SDL_Rect rect = {x * sw, y * sh, sw, sh};
-            sprites->emplace_back(std::make_shared<SDL_Rect>(rect));
+            sprites.push_back({x * sw, y * sh, sw, sh});
         }
     }
 
-    sprites->resize(total_sprites_on_sheet);
+    sprites.resize(total_sprites_on_sheet, {0, 0, 0, 0});
 
     SDL_FreeSurface(tileset);
 }
 
-void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y) {
+SpriteSheet::~SpriteSheet() {
+    if (spritesheet_texture) SDL_DestroyTexture(spritesheet_texture);
+}
+
+void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y) const {
     draw_sprite(renderer, sprite_id, x, y, scale_factor);
 }
 
-void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y, int scale_factor) {
-    if (sprite_id < 0 || sprite_id > sprites->capacity()) {
+void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y, int scale_factor) const {
+    if (sprite_id < 0 || size_t(sprite_id) >= sprites.size()) {
         println("sprite id out of range: {}", sprite_id);
         return;
     }
@@ -496,54 +504,44 @@ void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int
     }
 
     SDL_Rect dest = {x, y, width, height};
-    auto & sprite_rect = sprites->at(sprite_id);
-    SDL_RenderCopy(renderer, spritesheet_texture, &(*sprite_rect), &dest);
+    auto & sprite_rect = sprites[sprite_id];
+    SDL_RenderCopy(renderer, spritesheet_texture, &sprite_rect, &dest);
 }
 
-void SpriteSheet::draw_sprite_sheet(SDL_Renderer * renderer, int x, int y) {
+void SpriteSheet::draw_sprite_sheet(SDL_Renderer * renderer, int x, int y) const {
     int col = 0;
     int row_height = 0;
 
     // println("scale_factor: {}", scale_factor);
 
-    for (int i = 0; i < sprites->size(); ++i) {
+    for (size_t i = 0; i < sprites.size(); ++i) {
         // println("col * sprite_width = {}", col * sprite_width);
         // println("col * (sprite_width * scale_factor) = {}", col * (sprite_width * scale_factor));
 
-        draw_sprite(renderer, i, x + (col * (sprite_width * scale_factor)), y + row_height);
+        draw_sprite(renderer, int(i), x + (col * (sprite_width * scale_factor)), y + row_height);
         ++col;
 
-        if ((i + 1) % 16 == 0) {
+        if ((i + 1u) % 16u == 0u) {
             row_height += sprite_height * scale_factor;
             col = 0;
         }
     }
 }
 
-sol::table SpriteSheet::get_sprites_as_lua_table(sol::this_state s) {
+sol::table SpriteSheet::get_sprites_as_lua_table(sol::this_state s) const {
     sol::state_view lua(s);
     sol::table sprites_table = lua.create_table();
 
-    // std::cout << "getting info for: " << name << std::endl;
-    // std::cout << "number of sprites: " << sprites->size() << std::endl;
-
-    for (std::size_t i = 0u, sp = sprites->size(); i != sp; ++i) {
-        auto & sprite_rect = sprites->at(i);
-
+    size_t i = 0u;
+    for (const auto & sprite_rect : sprites) {
         sol::table rect_table = lua.create_table();
 
-        rect_table.set("x", sprite_rect->x);
-        rect_table.set("y", sprite_rect->y);
-        rect_table.set("w", sprite_rect->w);
-        rect_table.set("h", sprite_rect->h);
+        rect_table.set("x", sprite_rect.x);
+        rect_table.set("y", sprite_rect.y);
+        rect_table.set("w", sprite_rect.w);
+        rect_table.set("h", sprite_rect.h);
 
-        sprites_table.set(i, rect_table);
-
-        // std::cout << i << " - " <<
-        //		" x = " << sprite_rect->x <<
-        //		" y = " << sprite_rect->x <<
-        //		" w = " << sprite_rect->w <<
-        //		" h = " << sprite_rect->h << std::endl;
+        sprites_table.set(i++, rect_table);
     }
 
     return sprites_table;
@@ -755,9 +753,6 @@ Engine::Engine() {
     Mix_VolumeMusic(5);
 
     entity_manager = std::make_unique<roguely::ecs::EntityManager>(lua.lua_state());
-    maps = std::make_unique<std::vector<std::shared_ptr<roguely::map::Map>>>();
-    systems = std::make_unique<std::unordered_map<std::string, sol::function>>();
-    texts = std::make_unique<std::unordered_map<std::string, std::shared_ptr<roguely::common::Text>>>();
 }
 
 int Engine::init_sdl(sol::table game_config, sol::this_state s) {
@@ -827,17 +822,16 @@ int Engine::init_sdl(sol::table game_config, sol::this_state s) {
     // text_medium->load_font(font_path, 32);
 
     // Load the spritesheet (FIXME: add ability to load more than one spritesheet)
-    sprite_sheets = std::make_unique<std::unordered_map<std::string, std::shared_ptr<roguely::sprites::SpriteSheet>>>();
-    sprite_sheets->emplace(game_config["spritesheet_name"],
-                           std::make_shared<roguely::sprites::SpriteSheet>(
-                               renderer, game_config["spritesheet_name"], game_config["spritesheet_path"],
-                               game_config["spritesheet_sprite_width"], game_config["spritesheet_sprite_height"],
-                               game_config["spritesheet_sprite_scale_factor"]));
+    sprite_sheets.clear();
+    sprite_sheets.try_emplace(game_config["spritesheet_name"],
+                              std::make_shared<roguely::sprites::SpriteSheet>(
+                                  renderer, game_config["spritesheet_name"], game_config["spritesheet_path"],
+                                  game_config["spritesheet_sprite_width"], game_config["spritesheet_sprite_height"],
+                                  game_config["spritesheet_sprite_scale_factor"]));
 
     // Initialize sounds
+    sounds.clear();
     if (game_config["sounds"].valid() && game_config["sounds"].get_type() == sol::type::table) {
-        sounds = std::make_unique<std::vector<std::shared_ptr<roguely::common::Sound>>>();
-
         sol::table sound_table = game_config["sounds"];
 
         for (auto & sound : sound_table) {
@@ -853,7 +847,7 @@ int Engine::init_sdl(sol::table game_config, sol::this_state s) {
                     println("sound file does not exist: {}", sound_path);
                 } else {
                     roguely::common::Sound s{sound_name, Mix_LoadWAV(sound_path.c_str())};
-                    sounds->emplace_back(std::make_shared<roguely::common::Sound>(s));
+                    sounds.push_back(std::make_shared<roguely::common::Sound>(s));
                 }
             }
         }
@@ -872,9 +866,9 @@ int Engine::init_sdl(sol::table game_config, sol::this_state s) {
 void Engine::tear_down_sdl() {
     if (soundtrack != nullptr) { Mix_FreeMusic(soundtrack); }
 
-    for (auto & s : *sounds) { Mix_FreeChunk(s->sound); }
-
-    sprite_sheets.reset();
+    for (auto & s : sounds) { Mix_FreeChunk(s->sound); }
+    sounds.clear();
+    sprite_sheets.clear();
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -940,9 +934,9 @@ int Engine::game_loop() {
             if (e.type == SDL_QUIT) {
                 quit = true;
             } else if (e.type == SDL_KEYDOWN) {
-                if (systems->contains("keyboard_input_system")) {
+                if (auto it = systems.find("keyboard_input_system"); it != systems.end()) {
                     // FIXME: Fix hard coded entity group and entity name for PLAYER
-                    auto keyboard_input_system_result = (*systems)["keyboard_input_system"](
+                    auto keyboard_input_system_result = it->second(
                         e.key.keysym.sym, entity_manager->get_lua_entity("common", "player"),
                         entity_manager->get_lua_entities(),
                         entity_manager->get_lua_entities_in_viewport(
@@ -955,13 +949,11 @@ int Engine::game_loop() {
             }
         }
 
-        for (auto & system : *systems) {
-            if (system.first != "tick_system" && system.first != "keyboard_input_system" &&
-                system.first != "render_system") {
-                auto system_result = system.second(
-                    entity_manager->get_lua_entity("common", "player"), entity_manager->get_lua_entities(),
-                    entity_manager->get_lua_entities_in_viewport([&](int x, int y) { return is_within_viewport(x, y); },
-                                                                 lua.lua_state()));
+        for (auto & [name, func] : systems) {
+            if (name != "tick_system" && name != "keyboard_input_system" && name != "render_system") {
+                auto system_result = func(entity_manager->get_lua_entity("common", "player"), entity_manager->get_lua_entities(),
+                                          entity_manager->get_lua_entities_in_viewport([&](int x, int y) { return is_within_viewport(x, y); },
+                                                                                       lua.lua_state()));
                 if (!system_result.valid()) {
                     sol::error err = system_result;
                     println("Lua script error: {}", err.what());
@@ -972,11 +964,12 @@ int Engine::game_loop() {
 
         Uint32 current_time = SDL_GetTicks();
         if (current_time - last_update_time >= update_interval) {
-            if (systems->contains("tick_system")) {
-                auto tick_system_result = (*systems)["tick_system"](
+            if (auto it = systems.find("tick_system"); it != systems.end()) {
+                auto tick_system_result = it->second(
                     entity_manager->get_lua_entity("common", "player"), entity_manager->get_lua_entities(),
                     entity_manager->get_lua_entities_in_viewport([&](int x, int y) { return is_within_viewport(x, y); },
-                                                                 lua.lua_state()));
+                                                                 lua.lua_state())
+                );
                 if (!tick_system_result.valid()) {
                     sol::error err = tick_system_result;
                     println("Lua script error: {}", err.what());
@@ -992,8 +985,8 @@ int Engine::game_loop() {
         float delta_time = (current_frame_time - frame_start) / 1000.0f;
 
         // Call render
-        if (systems->contains("render_system")) {
-            auto render_system_result = (*systems)["render_system"](
+        if (auto it = systems.find("render_system"); it != systems.end()) {
+            auto render_system_result = it->second(
                 delta_time, entity_manager->get_lua_entity("common", "player"), entity_manager->get_lua_entities(),
                 entity_manager->get_lua_entities_in_viewport([&](int x, int y) { return is_within_viewport(x, y); },
                                                              lua.lua_state()));
@@ -1015,7 +1008,7 @@ int Engine::game_loop() {
     return 0;
 }
 
-bool Engine::check_game_config(sol::table game_config, sol::this_state s) {
+bool Engine::check_game_config(sol::table game_config, sol::this_state s) const {
     bool result = true;
 
     auto title = game_config["window_title"];
@@ -1058,37 +1051,36 @@ void Engine::draw_text(const std::string & t, int x, int y, int r, int g, int b,
 }
 
 void Engine::draw_sprite(const std::string & spritesheet_name, int sprite_id, int x, int y, int scale_factor) {
-    if (sprite_sheets->contains(spritesheet_name)) {
-        (*sprite_sheets)[spritesheet_name]->draw_sprite(renderer, sprite_id, x, y, scale_factor);
+    if (auto it = sprite_sheets.find(spritesheet_name); it != sprite_sheets.end()) {
+        it->second->draw_sprite(renderer, sprite_id, x, y, scale_factor);
     }
 }
 
-void Engine::set_draw_color(SDL_Renderer * renderer, int r, int g, int b, int a) {
+void Engine::set_draw_color(SDL_Renderer * renderer, int r, int g, int b, int a) const {
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
 }
 
-void Engine::draw_point(SDL_Renderer * renderer, int x, int y) { SDL_RenderDrawPoint(renderer, x, y); }
+void Engine::draw_point(SDL_Renderer * renderer, int x, int y) const { SDL_RenderDrawPoint(renderer, x, y); }
 
-void Engine::draw_rect(SDL_Renderer * renderer, int x, int y, int w, int h) {
-    SDL_Rect r = {x, y, w, h};
+void Engine::draw_rect(SDL_Renderer * renderer, int x, int y, int w, int h) const {
+    const SDL_Rect r = {x, y, w, h};
     SDL_RenderDrawRect(renderer, &r);
 }
 
-void Engine::draw_filled_rect(SDL_Renderer * renderer, int x, int y, int w, int h) {
-    SDL_Rect r = {x, y, w, h};
+void Engine::draw_filled_rect(SDL_Renderer * renderer, int x, int y, int w, int h) const {
+    const SDL_Rect r = {x, y, w, h};
     SDL_RenderFillRect(renderer, &r);
 }
 
-void Engine::draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, int w, int h, int r, int g, int b,
-                                         int a) {
-    SDL_Rect rect = {x, y, w, h};
+void Engine::draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, int w, int h, int r, int g, int b, int a) const {
+    const SDL_Rect rect = {x, y, w, h};
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
     SDL_RenderFillRect(renderer, &rect);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 }
 
 void Engine::draw_graphic(SDL_Renderer * renderer, const std::string & path, int window_width, int x, int y,
-                          bool centered, int scale_factor) {
+                          bool centered, int scale_factor) const {
     if (!std::filesystem::exists(path)) {
         println("graphic file does not exist: {}", path);
         return;
@@ -1119,11 +1111,12 @@ void Engine::draw_graphic(SDL_Renderer * renderer, const std::string & path, int
 void Engine::play_sound(const std::string & name) {
     if (!(name.length() > 0)) return;
 
-    auto sound = std::find_if(sounds->begin(), sounds->end(), [&](const auto & s) { return s->name == name; });
+    auto sound = std::find_if(sounds.begin(), sounds.end(), [&](const auto & s) { return s->name == name; });
 
-    if (sound != sounds->end()) { (*sound)->play(); }
+    if (sound != sounds.end()) { (*sound)->play(); }
 }
 
+/* static */
 std::shared_ptr<roguely::map::Map> Engine::generate_map(const std::string & name, int map_width, int map_height) {
     // println("generating map: {}", name);
 
@@ -1132,10 +1125,25 @@ std::shared_ptr<roguely::map::Map> Engine::generate_map(const std::string & name
 
     // auto map = std::make_shared<Matrix>(map_height, map_width, 1);
 
-    return std::make_shared<roguely::map::Map>(name, map_width, map_height, map);
+    return std::make_shared<roguely::map::Map>(name, map_width, map_height, std::move(map));
 }
 
-sol::function Engine::check_if_lua_function_defined(sol::this_state s, const std::string & name) {
+roguely::common::Dimension Engine::update_player_viewport(const roguely::common::Point & player_position,
+                                                          const roguely::common::Size & current_map,
+                                                          const roguely::common::Size & initial_view_port) {
+    view_port_x = std::clamp(player_position.x - (VIEW_PORT_WIDTH / 2), 0, current_map.width - VIEW_PORT_WIDTH);
+    view_port_y = std::clamp(player_position.y - (VIEW_PORT_HEIGHT / 2), 0, current_map.height - VIEW_PORT_HEIGHT);
+    view_port_width = view_port_x + VIEW_PORT_WIDTH;
+    view_port_height = view_port_y + VIEW_PORT_HEIGHT;
+
+    const roguely::common::Dimension dim{view_port_x,       view_port_y,     player_position.x,
+                                         player_position.y, view_port_width, view_port_height};
+    if (current_map_info.map != nullptr)
+        current_map_info.map->calculate_field_of_view(dim);
+    return dim;
+}
+
+sol::function Engine::check_if_lua_function_defined(sol::this_state s, const std::string & name) const {
     sol::state_view lua(s);
     sol::function lua_func = lua[name];
     if (!(lua_func.valid() && lua_func.get_type() == sol::type::function)) {
@@ -1150,8 +1158,8 @@ void Engine::setup_lua_api(sol::this_state s) {
     sol::state_view lua(s);
 
     lua.set_function("get_sprite_info", [&](std::string sprite_sheet_name, sol::this_state s) {
-        if (sprite_sheets->contains(sprite_sheet_name)) {
-            (*sprite_sheets)[sprite_sheet_name]->get_sprites_as_lua_table(s);
+        if (auto it = sprite_sheets.find(sprite_sheet_name); it != sprite_sheets.end()) {
+            it->second->get_sprites_as_lua_table(s);
         }
     });
     lua.set_function("draw_text", [&](const std::string & t, int x, int y) { draw_text(t, x, y); });
@@ -1166,8 +1174,8 @@ void Engine::setup_lua_api(sol::this_state s) {
                          draw_sprite(spritesheet_name, sprite_id, x, y, scale_factor);
                      });
     lua.set_function("draw_sprite_sheet", [&](const std::string & spritesheet_name, int x, int y) {
-        auto ss_i = sprite_sheets->find(spritesheet_name);
-        if (ss_i != sprite_sheets->end()) { ss_i->second->draw_sprite_sheet(renderer, x, y); }
+        auto ss_i = sprite_sheets.find(spritesheet_name);
+        if (ss_i != sprite_sheets.end()) { ss_i->second->draw_sprite_sheet(renderer, x, y); }
     });
     lua.set_function("set_draw_color", [&](int r, int g, int b, int a) { set_draw_color(renderer, r, g, b, a); });
     lua.set_function("draw_point", [&](int x, int y) { draw_point(renderer, x, y); });
@@ -1187,7 +1195,7 @@ void Engine::setup_lua_api(sol::this_state s) {
         auto map = generate_map(name, map_width, map_height);
         current_map_info.name = name;
         current_map_info.map = map;
-        maps->push_back(map);
+        maps.push_back(map);
     });
     lua.set_function("get_random_point_on_map", [&](sol::this_state s) {
         sol::state_view lua(s);
@@ -1209,8 +1217,7 @@ void Engine::setup_lua_api(sol::this_state s) {
             current_map_info.name = name;
         }
     });
-    lua.set_function("draw_visible_map", [&](const std::string & name, const std::string & ss_name,
-                                             sol::function draw_map_callback) {
+    lua.set_function("draw_visible_map", [&](const std::string & name, const std::string & ss_name, sol::function draw_map_callback) {
         if (current_map_info.name != name) {
             auto map = find_map(name);
 
@@ -1221,8 +1228,17 @@ void Engine::setup_lua_api(sol::this_state s) {
         }
 
         if (current_map_info.name == name) {
+            auto ss_it = sprite_sheets.find(ss_name);
+            if (ss_it == sprite_sheets.end()) {
+                println("Error, could not find sprite sheet '{}'", ss_name);
+                return;
+            } else if (!ss_it->second) {
+                // should never happen
+                println("Error, sprite sheet '{}' is null!", ss_name);
+                return;
+            }
             current_map_info.map->draw_map(
-                renderer, current_dimension, sprite_sheets->at(ss_name),
+                renderer, current_dimension, ss_it->second,
                 [&](int rows, int cols, int dx, int dy, int cell_id, int light_cell, int scale_factor) {
                     auto draw_map_callback_result =
                         draw_map_callback(rows, cols, dx, dy, cell_id, light_cell, scale_factor);
@@ -1233,8 +1249,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                 });
         }
     });
-    lua.set_function("draw_full_map", [&](const std::string & name, int x, int y, int a,
-                                          sol::function draw_map_callback) {
+    lua.set_function("draw_full_map", [&](const std::string & name, int x, int y, int a, sol::function draw_map_callback) {
         if (current_map_info.name != name) {
             auto map = find_map(name);
 
@@ -1311,7 +1326,7 @@ void Engine::setup_lua_api(sol::this_state s) {
         return extents_table;
     });
     lua.set_function("add_system", [&](const std::string & name, sol::function system_callback) {
-        systems->insert({name, system_callback});
+        systems.try_emplace(name, system_callback);
     });
     lua.set_function("get_random_key_from_table", [&](sol::table table) {
         std::string ret;
@@ -1346,12 +1361,12 @@ void Engine::setup_lua_api(sol::this_state s) {
     lua.set_function("add_font", [&](const std::string & name, const std::string & font_path, int font_size) {
         auto text = std::make_shared<roguely::common::Text>();
         text->load_font(font_path, font_size);
-        texts->try_emplace(name, text);
+        texts.try_emplace(name, text);
         default_font = text;
     });
     lua.set_function("set_font", [&](const std::string & name) {
-        auto text = texts->find(name);
-        if (text != texts->end()) { default_font = std::move(text->second); }
+        auto it = texts.find(name);
+        if (it != texts.end()) { default_font = it->second; }
     });
     lua.set_function("get_adjacent_points", [&](int x, int y, sol::this_state s) {
         sol::state_view lua(s);
@@ -1382,18 +1397,21 @@ void Engine::setup_lua_api(sol::this_state s) {
         sol::state_view lua(s);
         sol::table table = lua.create_table();
         if (current_map_info.map != nullptr) {
-            auto point = current_map_info.map->map_to_world(x, y, current_dimension, sprite_sheets->at(ss_name));
-            table.set("x", point.x);
-            table.set("y", point.y);
+            if (auto ss_it = sprite_sheets.find(ss_name); ss_it != sprite_sheets.end()) {
+                auto point = current_map_info.map->map_to_world(x, y, current_dimension, *(ss_it->second));
+                table.set("x", point.x);
+                table.set("y", point.y);
+            }
         }
         return table;
     });
     lua.set_function("set_highlight_color", [&](const std::string & ss_name, int r, int g, int b) {
-        if (sprite_sheets->contains(ss_name)) { (*sprite_sheets)[ss_name]->set_highlight_color(r, g, b); }
+        if (auto it = sprite_sheets.find(ss_name); it != sprite_sheets.end())
+            it->second->set_highlight_color(r, g, b);
     });
     lua.set_function("reset_highlight_color", [&](const std::string & ss_name) {
-        if (sprite_sheets->contains(ss_name)) {
-            (*sprite_sheets)[ss_name]->reset_highlight_color();
+        if (auto it = sprite_sheets.find(ss_name); it != sprite_sheets.end()) {
+            it->second->reset_highlight_color();
             if (current_map_info.map != nullptr) { current_map_info.map->trigger_redraw(); }
         }
     });
