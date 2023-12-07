@@ -14,7 +14,6 @@ project(roguely CXX)
 
 find_package(magic_enum CONFIG REQUIRED)
 find_package(Boost REQUIRED)
-find_package(fmt REQUIRED)
 find_package(sol2 REQUIRED)
 find_package(Lua REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -36,7 +35,6 @@ target_link_libraries(roguely
 	PUBLIC
 	winmm.lib
 	bcrypt.lib
-	fmt::fmt
 	${LUA_LIBRARIES}
 	SDL2::SDL2 SDL2::SDL2main SDL2::SDL2-static
 	$<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>

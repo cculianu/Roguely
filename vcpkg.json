@@ -3,10 +3,9 @@
   "name": "roguely",
   "version": "1.0.0",
   "dependencies": [
-    "magic-enum",
     "boost-ublas",
-    "fmt",
-    "sol2",
+    "lua",
+    "magic-enum",
     "sdl2",
     "sdl2-image",
     "sdl2-ttf",
@@ -14,6 +13,6 @@
       "name": "sdl2-mixer",
       "features": [ "mpg123" ]
     },
-    "lua"
+    "sol2"
   ]
 }

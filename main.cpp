@@ -46,7 +46,7 @@ int main(int argc, char * argv[]) {
     //   std::cout << "(" << point.first << ", " << point.second << ") ";
     // }
     // std::cout << std::endl;
-    // fmt::print("Path size = {}", path.size());
+    // roguely::println("Path size = {}", path.size());
 
     return 0;
 }

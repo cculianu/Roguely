@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <concepts>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -13,10 +14,9 @@
 #include <numeric>
 #include <optional>
 #include <queue>
-#include <random>
 #include <ranges>
 #include <set>
-#include <sstream>
+#include <utility>
 #include <vector>
 
 #include <SDL2/SDL.h>
@@ -25,8 +25,6 @@
 #include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_ttf.h>
 #include <boost/numeric/ublas/matrix.hpp>
-#include <fmt/core.h>
-#include <fmt/ranges.h>
 #include <magic_enum.hpp>
 #include <mpg123.h>
 #define SOL_ALL_SAFETIES_ON 1
@@ -44,6 +42,10 @@ public:
     size_t get() const { return id; }
 };
 std::string generate_uuid();
+template<typename ...Args>
+void println(std::format_string<Args...> fmt, Args && ...args) {
+    std::cout << std::format(std::move(fmt), std::forward<Args>(args)...) << std::endl;
+}
 } // namespace roguely
 
 namespace roguely::level_generation {
@@ -318,7 +320,7 @@ public:
         sol::table result = sol::nil;
 
         if (!entities.valid()) {
-            fmt::println("get_lua_entity: entities is not valid");
+            println("get_lua_entity: entities is not valid");
             return result;
         }
 
@@ -342,8 +344,7 @@ public:
             auto components = entity["components"];
             if (components.valid()) {
                 components[component_name] = sol::nil;
-                // fmt::println("removed component {} from entity {}", component_name,
-                // entity_name);
+                // println("removed component {} from entity {}", component_name, entity_name);
             }
         }
     }
@@ -596,18 +597,18 @@ private:
     roguely::common::Dimension update_player_viewport(roguely::common::Point player_position,
                                                       roguely::common::Size current_map,
                                                       roguely::common::Size initial_view_port) {
-        // fmt::println("BEFORE (update_player_viewport): x: {}, y: {}, width: {},
-        // height: {}", player_position.x, player_position.y, current_map.width,
-        // current_map.height);
+        // println("BEFORE (update_player_viewport): x: {}, y: {}, width: {},
+        //         height: {}", player_position.x, player_position.y, current_map.width,
+        //         current_map.height);
 
         view_port_x = std::clamp(player_position.x - (VIEW_PORT_WIDTH / 2), 0, current_map.width - VIEW_PORT_WIDTH);
         view_port_y = std::clamp(player_position.y - (VIEW_PORT_HEIGHT / 2), 0, current_map.height - VIEW_PORT_HEIGHT);
         view_port_width = view_port_x + VIEW_PORT_WIDTH;
         view_port_height = view_port_y + VIEW_PORT_HEIGHT;
 
-        // fmt::println("(update_player_viewport): view_port_x: {}, view_port_y: {},
-        // view_port_width: {}, view_port_height: {}", view_port_x, view_port_y,
-        // view_port_width, view_port_height);
+        // println("(update_player_viewport): view_port_x: {}, view_port_y: {},
+        //         view_port_width: {}, view_port_height: {}", view_port_x, view_port_y,
+        //         view_port_width, view_port_height);
 
         auto dimensions = roguely::common::Dimension{view_port_x,       view_port_y,     player_position.x,
                                                      player_position.y, view_port_width, view_port_height};

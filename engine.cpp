@@ -1,7 +1,7 @@
 #include "engine.h"
 
-#include <format>
 #include <mutex>
+#include <random>
 
 namespace {
 std::mutex gen_mut;
@@ -81,7 +81,7 @@ int Text::load_font(const std::string & path, int ptsize) {
     font = TTF_OpenFont(path.c_str(), ptsize);
 
     if (!font) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Unable to load font: %s\n%s", path, TTF_GetError());
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Unable to load font: %s\n%s", path.c_str(), TTF_GetError());
         return -1;
     }
 
@@ -152,7 +152,7 @@ void EntityManager::add_entity_to_group(const std::string & group_name, std::sha
     auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
 
     if (lua_component != nullptr) {
-        auto full_name = fmt::format("{}-{}", e->get_name(), e->get_id());
+        auto full_name = std::format("{}-{}", e->get_name(), e->get_id());
         lua_entity_table.set(full_name,
                              lua.create_table_with("id", e->get_id(), "name", e->get_name(), "full_name", full_name,
                                                    "components", lua_component->get_properties()));
@@ -181,15 +181,14 @@ void EntityManager::remove_entity(const std::string & entity_group_name, const s
                          [&](std::shared_ptr<Entity> e) { return (e->get_id() == entity_id) ? true : false; });
 
         if (entity_to_remove != entity_group->entities->end()) {
-            std::string full_name =
-                fmt::format("{}-{}", (*entity_to_remove)->get_name(), (*entity_to_remove)->get_id());
+            const std::string full_name = std::format("{}-{}", (*entity_to_remove)->get_name(), (*entity_to_remove)->get_id());
 
-            // fmt::println("Removing entity: {}", full_name);
+            // println("Removing entity: {}", full_name);
 
             sol::table entity_group_table = lua_entities[entity_group_name];
             entity_group_table.set(full_name, sol::nil);
 
-            // fmt::println("Checking entity is valid: {}", entity_group_table[full_name].valid());
+            // println("Checking entity is valid: {}", entity_group_table[full_name].valid());
 
             entity_group->entities->erase(entity_to_remove);
         }
@@ -302,7 +301,7 @@ bool EntityManager::lua_is_point_unique(roguely::common::Point point) {
                     }
                     // else
                     // {
-                    //   fmt::println("position_component is not valid: {}", e->get_name());
+                    //   println("position_component is not valid: {}", e->get_name());
                     // }
                 }
             }
@@ -328,13 +327,12 @@ void EntityManager::lua_for_each_overlapping_point(const std::string & entity_na
                         int pc_y = position_component["y"];
 
                         if (pc_x == x && pc_y == y) {
-                            // fmt::println("found overlapping point: Player({}, {}) == Entity({}, {})", x, y, pc_x,
-                            // pc_y);
+                            // println("found overlapping point: Player({}, {}) == Entity({}, {})", x, y, pc_x, pc_y);
                             auto point_callback_result = point_callback(
-                                fmt::format("{}-{}", e->get_name(), e->get_id()), e->get_name(), lua_components_table);
+                                std::format("{}-{}", e->get_name(), e->get_id()), e->get_name(), lua_components_table);
                             if (!point_callback_result.valid()) {
                                 sol::error err = point_callback_result;
-                                fmt::println("Lua script error: {}", err.what());
+                                println("Lua script error: {}", err.what());
                             }
                         }
                     }
@@ -387,11 +385,10 @@ sol::table EntityManager::get_lua_blocked_points(const std::string & entity_grou
                     }
 
                     if (is_blocked) {
-                        // fmt::println("found overlapping point: Player({}, {}) == Entity({}, {})", x, y, entity_x,
-                        // entity_y);
+                        // println("found overlapping point: Player({}, {}) == Entity({}, {})", x, y, entity_x, entity_y);
 
                         result.set("entity_name", e->get_name());
-                        result.set("entity_full_name", fmt::format("{}-{}", e->get_name(), e->get_id()));
+                        result.set("entity_full_name", std::format("{}-{}", e->get_name(), e->get_id()));
                         result.set("entity_position", lua.create_table_with("x", entity_x, "y", entity_y));
                         result.set("direction", direction);
                         break;
@@ -424,9 +421,8 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
                         auto y = position_component["y"];
 
                         if (predicate(x, y)) {
-                            result.set(fmt::format("{}-{}", e->get_name(), e->get_id()),
-                                       lua.create_table_with("group_name", eg->name, "name", e->get_name(), "full_name",
-                                                             fmt::format("{}-{}", e->get_name(), e->get_id())));
+                            const auto fn = std::format("{}-{}", e->get_name(), e->get_id());
+                            result.set(fn, lua.create_table_with("group_name", eg->name, "name", e->get_name(), "full_name", fn));
                         }
                     }
                 }
@@ -450,15 +446,15 @@ SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const s
 
     scale_factor = sf;
 
-    // fmt::println("loading spritesheet: {}", path);
-    // fmt::println("sprite width: {} | sprite height: {}", sprite_width, sprite_height);
-    // fmt::println("scale factor: {}", scale_factor);
+    // println("loading spritesheet: {}", path);
+    // println("sprite width: {} | sprite height: {}", sprite_width, sprite_height);
+    // println("scale factor: {}", scale_factor);
 
     auto tileset = IMG_Load(p.c_str());
     spritesheet_texture = SDL_CreateTextureFromSurface(renderer, tileset);
     int total_sprites_on_sheet = tileset->w / sw * tileset->h / sh;
     sprites = std::make_unique<std::vector<std::shared_ptr<SDL_Rect>>>(0);
-    // fmt::println("total sprites on sheet: {}", total_sprites_on_sheet);
+    // println("total sprites on sheet: {}", total_sprites_on_sheet);
 
     SDL_GetTextureColorMod(spritesheet_texture, &o_red, &o_green, &o_blue);
 
@@ -480,7 +476,7 @@ void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int
 
 void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y, int scale_factor) {
     if (sprite_id < 0 || sprite_id > sprites->capacity()) {
-        fmt::println("sprite id out of range: {}", sprite_id);
+        println("sprite id out of range: {}", sprite_id);
         return;
     }
 
@@ -501,11 +497,11 @@ void SpriteSheet::draw_sprite_sheet(SDL_Renderer * renderer, int x, int y) {
     int col = 0;
     int row_height = 0;
 
-    // fmt::println("scale_factor: {}", scale_factor);
+    // println("scale_factor: {}", scale_factor);
 
     for (int i = 0; i < sprites->size(); ++i) {
-        // fmt::println("col * sprite_width = {}", col * sprite_width);
-        // fmt::println("col * (sprite_width * scale_factor) = {}", col * (sprite_width * scale_factor));
+        // println("col * sprite_width = {}", col * sprite_width);
+        // println("col * (sprite_width * scale_factor) = {}", col * (sprite_width * scale_factor));
 
         draw_sprite(renderer, i, x + (col * (sprite_width * scale_factor)), y + row_height);
         ++col;
@@ -569,11 +565,11 @@ void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & d
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
 
-        // fmt::println("sprite width: {} | sprite height: {}", sprite_width, sprite_height);
-        // fmt::println("dimensions.point.x: {} | dimensions.point.y: {}", dimensions.point.x, dimensions.point.y);
-        // fmt::println("dimensions.size.width: {} | dimensions.size.height: {}", dimensions.size.width,
-        // dimensions.size.height); fmt::println("map width: {} | map height: {}", map->size2(), map->size1());
-        // fmt::println("total sprites: {}", sprite_sheet->get_size_of_sprites());
+        // println("sprite width: {} | sprite height: {}", sprite_width, sprite_height);
+        // println("dimensions.point.x: {} | dimensions.point.y: {}", dimensions.point.x, dimensions.point.y);
+        // println("dimensions.size.width: {} | dimensions.size.height: {}", dimensions.size.width, dimensions.size.height); 
+        // println("map width: {} | map height: {}", map->size2(), map->size1());
+        // println("total sprites: {}", sprite_sheet->get_size_of_sprites());
 
         for (int rows = dimensions.point.y; rows < dimensions.size.height; ++rows) {
             for (int cols = dimensions.point.x; cols < dimensions.size.width; ++cols) {
@@ -586,7 +582,7 @@ void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & d
                     // rows, cols = map Y, X
                     // dx, dy = world X, Y
                     auto light_cell = (*light_map)(rows, cols);
-                    // fmt::println("light cell: {}", light_cell);
+                    // println("light cell: {}", light_cell);
                     draw_hook(rows, cols, dx, dy, cell_id, light_cell, scale_factor);
                 }
             }
@@ -669,7 +665,7 @@ roguely::common::Point Map::get_random_point(std::set<int> off_limit_sprites_ids
         int col = generate_random_int(0, width - 1);
 
         if (off_limit_sprites_ids.find((*map)(row, col)) == off_limit_sprites_ids.end()) {
-            // fmt::println("Found random point: ({},{}) = {}", row, col, (*map)(row, col));
+            // println("Found random point: ({},{}) = {}", row, col, (*map)(row, col));
             return roguely::common::Point{col, row};
         }
     }
@@ -840,15 +836,15 @@ int Engine::init_sdl(sol::table game_config, sol::this_state s) {
 
         for (auto & sound : sound_table) {
             if (sound.first.get_type() == sol::type::string && sound.second.get_type() == sol::type::string) {
-                // fmt::println("loading sound: {}", sound.first.as<std::string>());
-                // fmt::println("sound path: {}", sound.second.as<std::string>());
+                // println("loading sound: {}", sound.first.as<std::string>());
+                // println("sound path: {}", sound.second.as<std::string>());
 
                 auto sound_name = sound.first.as<std::string>();
                 auto sound_path = sound.second.as<std::string>();
 
                 // check to see if the sound file exists
                 if (!std::filesystem::exists(sound_path)) {
-                    fmt::println("sound file does not exist: {}", sound_path);
+                    println("sound file does not exist: {}", sound_path);
                 } else {
                     roguely::common::Sound s{sound_name, Mix_LoadWAV(sound_path.c_str())};
                     sounds->emplace_back(std::make_shared<roguely::common::Sound>(s));
@@ -888,7 +884,7 @@ int Engine::game_loop() {
 
     std::string roguely_script = "roguely.lua";
     if (!std::filesystem::exists(roguely_script)) {
-        fmt::println("'roguely.lua' does not exist.");
+        println("'roguely.lua' does not exist.");
         return -1;
     }
 
@@ -896,14 +892,14 @@ int Engine::game_loop() {
 
     if (!game_script.valid()) {
         sol::error err = game_script;
-        fmt::println("Lua script error: {}", err.what());
+        println("Lua script error: {}", err.what());
         return -1;
     }
 
     auto game_config = lua.get<sol::table>("Game");
 
     if (!(game_config.valid() && check_game_config(game_config, lua.lua_state()))) {
-        fmt::println("game script does not define the 'Game' configuration table.");
+        println("game script does not define the 'Game' configuration table.");
         return -1;
     }
 
@@ -915,7 +911,7 @@ int Engine::game_loop() {
         auto init_result = lua["_init"]();
         if (!init_result.valid()) {
             sol::error err = init_result;
-            fmt::println("Lua script error: {}", err.what());
+            println("Lua script error: {}", err.what());
         }
     }
 
@@ -947,7 +943,7 @@ int Engine::game_loop() {
                             [&](int x, int y) { return is_within_viewport(x, y); }, lua.lua_state()));
                     if (!keyboard_input_system_result.valid()) {
                         sol::error err = keyboard_input_system_result;
-                        fmt::println("Lua script error: {}", err.what());
+                        println("Lua script error: {}", err.what());
                     }
                 }
             }
@@ -962,7 +958,7 @@ int Engine::game_loop() {
                                                                  lua.lua_state()));
                 if (!system_result.valid()) {
                     sol::error err = system_result;
-                    fmt::println("Lua script error: {}", err.what());
+                    println("Lua script error: {}", err.what());
                     return -1;
                 }
             }
@@ -977,7 +973,7 @@ int Engine::game_loop() {
                                                                  lua.lua_state()));
                 if (!tick_system_result.valid()) {
                     sol::error err = tick_system_result;
-                    fmt::println("Lua script error: {}", err.what());
+                    println("Lua script error: {}", err.what());
                 }
             }
             last_update_time = current_time;
@@ -997,7 +993,7 @@ int Engine::game_loop() {
                                                              lua.lua_state()));
             if (!render_system_result.valid()) {
                 sol::error err = render_system_result;
-                fmt::println("Lua script error: {}", err.what());
+                println("Lua script error: {}", err.what());
             }
         }
 
@@ -1088,7 +1084,7 @@ void Engine::draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, 
 void Engine::draw_graphic(SDL_Renderer * renderer, const std::string & path, int window_width, int x, int y,
                           bool centered, int scale_factor) {
     if (!std::filesystem::exists(path)) {
-        fmt::println("graphic file does not exist: {}", path);
+        println("graphic file does not exist: {}", path);
         return;
     }
 
@@ -1123,7 +1119,7 @@ void Engine::play_sound(const std::string & name) {
 }
 
 std::shared_ptr<roguely::map::Map> Engine::generate_map(const std::string & name, int map_width, int map_height) {
-    // fmt::println("generating map: {}", name);
+    // println("generating map: {}", name);
 
     auto map = roguely::level_generation::init_cellular_automata(map_width, map_height);
     roguely::level_generation::perform_cellular_automaton(*map, map_width, map_height, 10);
@@ -1137,7 +1133,7 @@ sol::function Engine::check_if_lua_function_defined(sol::this_state s, const std
     sol::state_view lua(s);
     sol::function lua_func = lua[name];
     if (!(lua_func.valid() && lua_func.get_type() == sol::type::function)) {
-        fmt::println("game script does not define the '{}' method.", name);
+        println("game script does not define the '{}' method.", name);
         return nullptr;
     }
 
@@ -1226,7 +1222,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                         draw_map_callback(rows, cols, dx, dy, cell_id, light_cell, scale_factor);
                     if (!draw_map_callback_result.valid()) {
                         sol::error err = draw_map_callback_result;
-                        fmt::println("Lua script error: {}", err.what());
+                        println("Lua script error: {}", err.what());
                     }
                 });
         }
@@ -1247,7 +1243,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                 auto draw_map_callback_result = draw_map_callback(rows, cols, cell_id);
                 if (!draw_map_callback_result.valid()) {
                     sol::error err = draw_map_callback_result;
-                    fmt::println("Lua script error: {}", err.what());
+                    println("Lua script error: {}", err.what());
                 }
             });
         }
@@ -1344,7 +1340,7 @@ void Engine::setup_lua_api(sol::this_state s) {
     lua.set_function("add_font", [&](const std::string & name, const std::string & font_path, int font_size) {
         auto text = std::make_shared<roguely::common::Text>();
         text->load_font(font_path, font_size);
-        texts->insert({name, std::move(text)});
+        texts->try_emplace(name, text);
         default_font = text;
     });
     lua.set_function("set_font", [&](const std::string & name) {
