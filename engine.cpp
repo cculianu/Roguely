@@ -1,10 +1,10 @@
 #include "engine.h"
 
+#include <format>
 #include <mutex>
 
 namespace {
 std::mutex gen_mut;
-boost::uuids::random_generator gen_uuid;
 std::mt19937 gen_mt(std::random_device{}());
 
 inline void to_lower(std::string & s) { std::transform(s.begin(), s.end(), s.begin(), [](char c) { return std::tolower(c); }); }
@@ -17,13 +17,11 @@ int generate_random_int(int min, int max) {
 }
 } // namespace
 
-std::string roguely::generate_uuid() {
-    const boost::uuids::uuid id = [] {
-        std::unique_lock l(gen_mut);
-        return gen_uuid();
-    }();
-    return boost::uuids::to_string(id);
-}
+namespace roguely {
+/* static */ std::atomic_size_t Id::nextId{1u};
+std::string Id::to_string() const { return std::format("{}", id); }
+std::string generate_uuid() { return Id().to_string(); }
+} // namespace roguely
 
 namespace roguely::level_generation {
 

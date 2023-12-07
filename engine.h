@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <concepts>
 #include <filesystem>
 #include <functional>
@@ -23,9 +25,6 @@
 #include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_ttf.h>
 #include <boost/numeric/ublas/matrix.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <magic_enum.hpp>
@@ -34,6 +33,16 @@
 #include <sol/sol.hpp>
 
 namespace roguely {
+class Id {
+    static std::atomic_size_t nextId;
+    size_t id{};
+
+public:
+    Id() : id{nextId++} {}
+
+    std::string to_string() const;
+    size_t get() const { return id; }
+};
 std::string generate_uuid();
 } // namespace roguely
 
