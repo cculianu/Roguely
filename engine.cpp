@@ -1,6 +1,7 @@
 #include "engine.h"
 
 #include <mutex>
+#include <queue>
 #include <random>
 
 namespace {
@@ -25,7 +26,7 @@ std::string generate_uuid() { return Id().to_string(); }
 
 namespace roguely::level_generation {
 
-int get_neighbor_wall_count(const boost::numeric::ublas::matrix<int> & map, int map_width, int map_height, int x, int y) {
+int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y) {
     int wall_count = 0;
 
     for (int row = y - 1; row <= y + 1; ++row) {
@@ -41,7 +42,7 @@ int get_neighbor_wall_count(const boost::numeric::ublas::matrix<int> & map, int 
     return wall_count;
 }
 
-void perform_cellular_automaton(boost::numeric::ublas::matrix<int> & map, int map_width, int map_height, int passes) {
+void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes) {
     for (int p = 0; p < passes; ++p) {
         const auto & temp_map = map;
 
@@ -58,8 +59,9 @@ void perform_cellular_automaton(boost::numeric::ublas::matrix<int> & map, int ma
     }
 }
 
-std::shared_ptr<boost::numeric::ublas::matrix<int>> init_cellular_automata(int map_width, int map_height) {
-    auto ret = std::make_shared<boost::numeric::ublas::matrix<int>>(map_height, map_width);
+std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height) {
+    assert(map_width >= 0 && map_height >= 0);
+    auto ret = std::make_shared<Matrix>(map_height, map_width);
     auto & map = *ret;
 
     for (int r = 0; r < map_height; ++r) {
@@ -623,8 +625,8 @@ void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & d
     SDL_RenderCopy(renderer, current_full_map_texture, NULL, &destination);
 }
 
-void Map::calculate_field_of_view(roguely::common::Dimension dimensions) {
-    light_map = std::make_shared<boost::numeric::ublas::matrix<int>>(height, width, 0);
+void Map::calculate_field_of_view(const roguely::common::Dimension & dimensions) {
+    light_map = std::make_shared<Matrix>(height, width, 0);
 
     // Iterate through all angles in the 360-degree field of view
     for (int angle = 0; angle < 360; angle += 1) {
@@ -650,7 +652,7 @@ void Map::calculate_field_of_view(roguely::common::Dimension dimensions) {
     }
 }
 
-roguely::common::Point Map::get_random_point(std::set<int> off_limit_sprites_ids) {
+roguely::common::Point Map::get_random_point(const std::set<int> & off_limit_sprites_ids) const {
     if (width <= 0 || height <= 0) { throw std::runtime_error("Empty map"); }
 
     if (off_limit_sprites_ids.empty()) {
@@ -664,7 +666,7 @@ roguely::common::Point Map::get_random_point(std::set<int> off_limit_sprites_ids
         int row = generate_random_int(0, height - 1);
         int col = generate_random_int(0, width - 1);
 
-        if (off_limit_sprites_ids.find((*map)(row, col)) == off_limit_sprites_ids.end()) {
+        if ( ! off_limit_sprites_ids.contains((*map)(row, col))) {
             // println("Found random point: ({},{}) = {}", row, col, (*map)(row, col));
             return roguely::common::Point{col, row};
         }
@@ -673,8 +675,7 @@ roguely::common::Point Map::get_random_point(std::set<int> off_limit_sprites_ids
     throw std::runtime_error("Unable to find a random point in map");
 }
 
-std::vector<std::pair<int, int>> AStar::FindPath(const boost::numeric::ublas::matrix<int> & grid, int start_row,
-                                                 int start_col, int goal_row, int goal_col) {
+std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col) const {
     std::vector<std::pair<int, int>> path;
 
     // Check if the starting position is a zero
@@ -687,9 +688,9 @@ std::vector<std::pair<int, int>> AStar::FindPath(const boost::numeric::ublas::ma
     // Create a priority queue to store the open list
     std::priority_queue<pq_entry, std::vector<pq_entry>, std::greater<pq_entry>> open_list;
     // Create a matrix to store the cost of reaching each cell
-    boost::numeric::ublas::matrix<int> cost(grid_rows, grid_cols, INT_MAX);
+    Matrix cost(grid_rows, grid_cols, INT_MAX);
     // Create a matrix to store the parent of each cell
-    boost::numeric::ublas::matrix<std::pair<int, int>> parent(grid_rows, grid_cols);
+    GenericMatrix<std::pair<int, int>> parent(grid_rows, grid_cols, std::pair{0, 0});
     // Initialize the cost of the start cell to 0
     cost(start_row, start_col) = 0;
     // Add the start cell to the open list with a priority of 0
@@ -1124,7 +1125,7 @@ std::shared_ptr<roguely::map::Map> Engine::generate_map(const std::string & name
     auto map = roguely::level_generation::init_cellular_automata(map_width, map_height);
     roguely::level_generation::perform_cellular_automaton(*map, map_width, map_height, 10);
 
-    // auto map = std::make_shared<boost::numeric::ublas::matrix<int>>(map_height, map_width, 1);
+    // auto map = std::make_shared<Matrix>(map_height, map_width, 1);
 
     return std::make_shared<roguely::map::Map>(name, map_width, map_height, map);
 }

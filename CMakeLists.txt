@@ -13,7 +13,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project(roguely CXX)
 
 find_package(magic_enum CONFIG REQUIRED)
-find_package(Boost REQUIRED)
 find_package(sol2 REQUIRED)
 find_package(Lua REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -27,7 +26,6 @@ target_compile_features(roguely PUBLIC cxx_std_20)
 
 target_include_directories(roguely
 	PUBLIC
-	${Boost_INCLUDE_DIRS}
 	${LUA_INCLUDE_DIR}
 )
 

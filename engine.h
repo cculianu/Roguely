@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <concepts>
 #include <filesystem>
 #include <format>
@@ -11,9 +13,6 @@
 #include <iostream>
 #include <map>
 #include <memory>
-#include <numeric>
-#include <optional>
-#include <queue>
 #include <ranges>
 #include <set>
 #include <utility>
@@ -24,7 +23,6 @@
 #include <SDL2/SDL_keycode.h>
 #include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_ttf.h>
-#include <boost/numeric/ublas/matrix.hpp>
 #include <magic_enum.hpp>
 #include <mpg123.h>
 #define SOL_ALL_SAFETIES_ON 1
@@ -46,15 +44,29 @@ template<typename ...Args>
 void println(std::format_string<Args...> fmt, Args && ...args) {
     std::cout << std::format(std::move(fmt), std::forward<Args>(args)...) << std::endl;
 }
+
+template <typename T>
+class GenericMatrix {
+    size_t nr{}, nc{};
+    std::vector<std::vector<T>> rows;
+public:
+    GenericMatrix() {}
+    GenericMatrix(size_t nrows, size_t ncols, const T & fill = {}) : nr{nrows}, nc{ncols}, rows(nrows, std::vector<T>(ncols, fill)) {}
+    T & operator()(size_t r, size_t c) { return rows.at(r).at(c); }
+    const T & operator()(size_t r, size_t c) const { return rows.at(r).at(c); }
+    size_t size1() const { return nr; }
+    size_t size2() const { return nc; }
+    void clear() { *this = GenericMatrix<T>(nr, nc); }
+};
+using Matrix = GenericMatrix<int>;
 } // namespace roguely
 
 namespace roguely::level_generation {
-// Quick and dirty cellular automata that I learned about from YouTube. We
-// can do more but currently are just doing the very least to get a playable
-// level.
-int get_neighbor_wall_count(const boost::numeric::ublas::matrix<int> & map, int map_width, int map_height, int x, int y);
-void perform_cellular_automaton(boost::numeric::ublas::matrix<int> & map, int map_width, int map_height, int passes);
-std::shared_ptr<boost::numeric::ublas::matrix<int>> init_cellular_automata(int map_width, int map_height);
+// Quick and dirty cellular automata that I learned about from YouTube. We can do more but currently are just doing the
+// very least to get a playable level.
+int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y);
+void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes);
+std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height);
 } // namespace roguely::level_generation
 
 namespace roguely::common {
@@ -472,9 +484,8 @@ namespace roguely::map {
 class Map {
 public:
     Map(){};
-    Map(const std::string & n, int w, int h, std::shared_ptr<boost::numeric::ublas::matrix<int>> m)
-        : name(n), width(w), height(h), map(std::move(m)),
-          light_map(std::make_shared<boost::numeric::ublas::matrix<int>>(h, w, 0)){}
+    Map(const std::string & n, int w, int h, std::shared_ptr<Matrix> m)
+        : name(n), width(w), height(h), map(std::move(m)), light_map(std::make_shared<Matrix>(h, w, 0)){}
 
     void draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & dimensions,
                   const std::shared_ptr<roguely::sprites::SpriteSheet> & sprite_sheet,
@@ -483,7 +494,7 @@ public:
     void draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & dimensions, int x, int y, int a,
                   const std::function<void(int, int, int)> & draw_hook);
 
-    void calculate_field_of_view(roguely::common::Dimension dimensions);
+    void calculate_field_of_view(const roguely::common::Dimension & dimensions);
 
     auto get_name() const { return name; }
     auto get_width() const { return width; }
@@ -491,8 +502,7 @@ public:
     auto get_map() const { return map; }
     auto get_light_map() const { return light_map; }
 
-    auto map_to_world(int x, int y, roguely::common::Dimension dimensions,
-                      std::shared_ptr<roguely::sprites::SpriteSheet> sprite_sheet) const {
+    auto map_to_world(int x, int y, roguely::common::Dimension dimensions, std::shared_ptr<roguely::sprites::SpriteSheet> sprite_sheet) const {
         int scale_factor = sprite_sheet->get_scale_factor();
         int sprite_width = sprite_sheet->get_sprite_width();
         int sprite_height = sprite_sheet->get_sprite_height();
@@ -503,22 +513,18 @@ public:
         return roguely::common::Point{dx, dy};
     }
 
-    // auto world_to_map(int x, int y, roguely::common::Dimension dimensions,
-    // std::shared_ptr<roguely::sprites::SpriteSheet> sprite_sheet) const
-    // {
+    // auto world_to_map(int x, int y, roguely::common::Dimension dimensions, std::shared_ptr<roguely::sprites::SpriteSheet> sprite_sheet) const {
     //   int scale_factor = sprite_sheet->get_scale_factor();
     //   int sprite_width = sprite_sheet->get_sprite_width();
     //   int sprite_height = sprite_sheet->get_sprite_height();
-
     //   int dx = (x + dimensions.point.x * sprite_width * scale_factor) /
     //            (sprite_width * scale_factor);
     //   int dy = (y + dimensions.point.y * sprite_height * scale_factor) /
     //            (sprite_height * scale_factor);
-
     //   return roguely::common::Point{dx, dy};
     // }
 
-    roguely::common::Point get_random_point(std::set<int> off_limit_sprites_ids);
+    roguely::common::Point get_random_point(const std::set<int> & off_limit_sprites_ids) const;
 
     void trigger_redraw() { current_map_segment_dimension = {}; }
 
@@ -535,8 +541,8 @@ private:
     std::string name{};
     int width{};
     int height{};
-    std::shared_ptr<boost::numeric::ublas::matrix<int>> map{};
-    std::shared_ptr<boost::numeric::ublas::matrix<int>> light_map{};
+    std::shared_ptr<Matrix> map{};
+    std::shared_ptr<Matrix> light_map{};
 };
 
 struct MapInfo {
@@ -548,12 +554,11 @@ class AStar {
 public:
     AStar() {}
 
-    std::vector<std::pair<int, int>> FindPath(const boost::numeric::ublas::matrix<int> & grid, int start_row,
-                                              int start_col, int goal_row, int goal_col);
+    std::vector<std::pair<int, int>> FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col) const;
 
 private:
     // Heuristic function for estimating the distance between two points
-    int heuristic(int x1, int y1, int x2, int y2) { return std::abs(x1 - x2) + std::abs(y1 - y2); }
+    int heuristic(int x1, int y1, int x2, int y2) const { return std::abs(x1 - x2) + std::abs(y1 - y2); }
 
     // Define the possible movements (up, down, left, right)
     inline static const int dx[4] = {-1, 1,  0, 0};

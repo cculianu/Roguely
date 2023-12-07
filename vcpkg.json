@@ -3,7 +3,6 @@
   "name": "roguely",
   "version": "1.0.0",
   "dependencies": [
-    "boost-ublas",
     "lua",
     "magic-enum",
     "sdl2",
