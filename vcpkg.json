@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "dependencies": [
     "lua",
-    "magic-enum",
     "sdl2",
     "sdl2-image",
     "sdl2-ttf",

@@ -119,9 +119,14 @@ void Text::draw_text(SDL_Renderer * renderer, int x, int y, const std::string & 
 } // namespace roguely::common
 
 namespace roguely::ecs {
-std::string entity_group_name_to_string(roguely::ecs::EntityGroupName group_name) {
-    auto gn = std::string(magic_enum::enum_name(group_name));
-    to_lower(gn);
+std::string entity_group_name_to_string(EntityGroupName group_name) {
+    std::string gn = "unknown";
+    switch (group_name) {
+    case EntityGroupName::PLAYER: gn = "player"; break;
+    case EntityGroupName::MOBS: gn = "mobs"; break;
+    case EntityGroupName::ITEMS: gn = "items"; break;
+    case EntityGroupName::OTHER: gn = "other"; break;
+    }
     return gn;
 }
 

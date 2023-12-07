@@ -23,7 +23,6 @@
 #include <SDL2/SDL_keycode.h>
 #include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_ttf.h>
-#include <magic_enum.hpp>
 #include <mpg123.h>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
@@ -127,7 +126,7 @@ namespace roguely::ecs {
 
 enum class EntityGroupName { PLAYER, MOBS, ITEMS, OTHER };
 
-std::string entity_group_name_to_string(roguely::ecs::EntityGroupName group_name);
+std::string entity_group_name_to_string(EntityGroupName group_name);
 
 class Component {
 public:

@@ -12,7 +12,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(roguely CXX)
 
-find_package(magic_enum CONFIG REQUIRED)
 find_package(sol2 REQUIRED)
 find_package(Lua REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -38,8 +37,6 @@ target_link_libraries(roguely
 	$<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
 	$<IF:$<TARGET_EXISTS:SDL2_ttf::SDL2_ttf>,SDL2_ttf::SDL2_ttf,SDL2_ttf::SDL2_ttf-static>
 	$<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
-	PRIVATE
-	magic_enum::magic_enum
 )
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/assets/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/assets/)
