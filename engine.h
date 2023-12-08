@@ -2,19 +2,14 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cassert>
-#include <cctype>
-#include <cstdint>
+#include <cstddef>
 #include <cstdlib>
-#include <concepts>
-#include <filesystem>
 #include <format>
 #include <functional>
 #include <iostream>
-#include <map>
 #include <memory>
-#include <ranges>
 #include <set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -87,11 +82,11 @@ struct Size {
 };
 
 struct Dimension {
-    bool operator==(const Dimension & d) const { return d.point == point && d.supplimental_point == supplimental_point && d.size == size; }
+    bool operator==(const Dimension & d) const { return d.point == point && d.supplemental_point == supplemental_point && d.size == size; }
     bool operator!=(const Dimension & d) const { return !(*this == d); }
 
     Point point{};
-    Point supplimental_point{}; // this is a hack for our Janky map drawing
+    Point supplemental_point{}; // this is a hack for our Janky map drawing
                                 // optimization
     Size size{};
 };
@@ -308,7 +303,7 @@ public:
 
         std::vector<std::shared_ptr<Entity>> matches{};
         for (auto & e : *group->entities) {
-            auto result = e->find_component_by_type<T>(predicate);
+            auto result = e->find_components_by_type<T>(predicate);
             if (result.size() > 0) { matches.emplace_back(e); }
         }
 
@@ -414,7 +409,7 @@ public:
     }
 
     void set_property(const std::string & name, sol::object value) { properties.set(name, value); }
-    void set_properties(sol::table props, sol::this_state s) { properties = props; }
+    void set_properties(sol::table props, sol::this_state) { properties = props; }
 
     sol::table copy_table(const sol::table & original, sol::this_state s) {
         sol::state_view lua(original.lua_state());

@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include <cassert>
+#include <filesystem>
 #include <mutex>
 #include <queue>
 #include <random>
@@ -10,9 +12,6 @@ namespace {
 std::mutex gen_mut;
 std::mt19937 gen_mt(std::random_device{}());
 
-inline void to_lower(std::string & s) { std::transform(s.begin(), s.end(), s.begin(), [](char c) { return std::tolower(c); }); }
-inline void to_upper(std::string & s) { std::transform(s.begin(), s.end(), s.begin(), [](char c) { return std::toupper(c); }); }
-inline void to_titlecase(std::string & s) { if (!s.empty()) { to_lower(s); s[0] = std::toupper(s[0]); } }
 int generate_random_int(int min, int max) {
     std::uniform_int_distribution<> dis(min, max);
     std::unique_lock l(gen_mut);
@@ -637,8 +636,8 @@ void Map::calculate_field_of_view(const roguely::common::Dimension & dimensions)
         float dx = std::cos(radians);
         float dy = std::sin(radians);
 
-        float newX = dimensions.supplimental_point.x + dx;
-        float newY = dimensions.supplimental_point.y + dy;
+        float newX = dimensions.supplemental_point.x + dx;
+        float newY = dimensions.supplemental_point.y + dy;
 
         // Keep expanding in the current direction until reaching a wall or map boundary
         while (newX >= 0 && newX < width && newY >= 0 && newY < height) {
@@ -755,7 +754,7 @@ Engine::Engine() {
     entity_manager = std::make_unique<roguely::ecs::EntityManager>(lua.lua_state());
 }
 
-int Engine::init_sdl(sol::table game_config, sol::this_state s) {
+int Engine::init_sdl(sol::table game_config, sol::this_state) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL: %s", SDL_GetError());
         return -1;
@@ -785,7 +784,7 @@ int Engine::init_sdl(sol::table game_config, sol::this_state s) {
     int spritesheet_sprite_scale_factor = game_config["spritesheet_sprite_scale_factor"];
     VIEW_PORT_WIDTH = window_width / (spritesheet_sprite_width * spritesheet_sprite_scale_factor);
     VIEW_PORT_HEIGHT = window_height / (spritesheet_sprite_height * spritesheet_sprite_scale_factor);
-    current_dimension = {0, 0, VIEW_PORT_WIDTH, VIEW_PORT_HEIGHT};
+    current_dimension = {.point = {0, 0}, .size = {VIEW_PORT_WIDTH, VIEW_PORT_HEIGHT}};
     game_config["viewport_width"] = VIEW_PORT_WIDTH;
     game_config["viewport_height"] = VIEW_PORT_HEIGHT;
     game_config["keycodes"] =
@@ -1008,7 +1007,7 @@ int Engine::game_loop() {
     return 0;
 }
 
-bool Engine::check_game_config(sol::table game_config, sol::this_state s) const {
+bool Engine::check_game_config(sol::table game_config, sol::this_state) const {
     bool result = true;
 
     auto title = game_config["window_title"];
@@ -1118,26 +1117,23 @@ void Engine::play_sound(const std::string & name) {
 
 /* static */
 std::shared_ptr<roguely::map::Map> Engine::generate_map(const std::string & name, int map_width, int map_height) {
-    // println("generating map: {}", name);
-
     auto map = roguely::level_generation::init_cellular_automata(map_width, map_height);
     roguely::level_generation::perform_cellular_automaton(*map, map_width, map_height, 10);
-
-    // auto map = std::make_shared<Matrix>(map_height, map_width, 1);
 
     return std::make_shared<roguely::map::Map>(name, map_width, map_height, std::move(map));
 }
 
 roguely::common::Dimension Engine::update_player_viewport(const roguely::common::Point & player_position,
                                                           const roguely::common::Size & current_map,
-                                                          const roguely::common::Size & initial_view_port) {
+                                                          const roguely::common::Size & initial_view_port [[maybe_unused]]) {
     view_port_x = std::clamp(player_position.x - (VIEW_PORT_WIDTH / 2), 0, current_map.width - VIEW_PORT_WIDTH);
     view_port_y = std::clamp(player_position.y - (VIEW_PORT_HEIGHT / 2), 0, current_map.height - VIEW_PORT_HEIGHT);
     view_port_width = view_port_x + VIEW_PORT_WIDTH;
     view_port_height = view_port_y + VIEW_PORT_HEIGHT;
 
-    const roguely::common::Dimension dim{view_port_x,       view_port_y,     player_position.x,
-                                         player_position.y, view_port_width, view_port_height};
+    const roguely::common::Dimension dim{.point = {.x = view_port_x, .y = view_port_y},
+                                         .supplemental_point = player_position,
+                                         .size = {.width = view_port_width, .height = view_port_height}};
     if (current_map_info.map != nullptr)
         current_map_info.map->calculate_field_of_view(dim);
     return dim;
@@ -1301,7 +1297,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                      });
     lua.set_function("set_component_value", [&](const std::string & entity_group_name, const std::string & entity_name,
                                                 const std::string & component_name, const std::string & key,
-                                                sol::object value, sol::this_state s) {
+                                                sol::object value, sol::this_state) {
         auto entity = entity_manager->get_entity_by_name(entity_group_name, entity_name);
         if (entity != nullptr) {
             auto component = entity->find_first_component_by_type<roguely::components::LuaComponent>();
