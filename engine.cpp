@@ -20,9 +20,13 @@ int generate_random_int(int min, int max) {
 }
 } // namespace
 
+#pragma mark Id
+
 /* static */ std::atomic_size_t Id::nextId{1u};
 std::string Id::to_string() const { return std::format("{}", id); }
 std::string generate_uuid() { return Id().to_string(); }
+
+#pragma mark Text
 
 int Text::load_font(const std::string & path, int ptsize) {
     font = TTF_OpenFont(path.c_str(), ptsize);
@@ -62,6 +66,8 @@ void Text::draw_text(SDL_Renderer * renderer, int x, int y, const std::string & 
     SDL_RenderCopy(renderer, text_texture, nullptr, &text_rect);
 }
 
+#pragma mark EntityGroupName
+
 std::string entity_group_name_to_string(EntityGroupName group_name) {
     std::string gn = "unknown";
     switch (group_name) {
@@ -72,6 +78,8 @@ std::string entity_group_name_to_string(EntityGroupName group_name) {
     }
     return gn;
 }
+
+#pragma mark EntityManager
 
 std::shared_ptr<EntityGroup> EntityManager::create_entity_group(const std::string & group_name) {
     auto entityGroup = std::make_shared<EntityGroup>();
@@ -412,6 +420,25 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
     return result;
 }
 
+#pragma mark LuaComponent
+
+/* static */
+sol::table LuaComponent::copy_table(const sol::table & original, sol::this_state s) {
+    sol::state_view lua(original.lua_state());
+    sol::table copy = lua.create_table();
+
+    original.for_each([&](const sol::object & key, const sol::object & value) {
+        if (value.is<sol::table>()) {
+            copy[key] = copy_table(value.as<sol::table>(), s);
+        } else {
+            copy[key] = value;
+        }
+    });
+
+    return copy;
+}
+
+#pragma mark SpriteSheet
 
 SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh, int sf) {
     path = p;
@@ -515,6 +542,8 @@ sol::table SpriteSheet::get_sprites_as_lua_table(sol::this_state s) const {
 
     return sprites_table;
 }
+
+#pragma mark Map
 
 void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
                    const std::shared_ptr<SpriteSheet> & sprite_sheet,
@@ -645,6 +674,8 @@ Point Map::get_random_point(const std::set<int> & off_limit_sprites_ids) const {
     throw std::runtime_error("Unable to find a random point in map");
 }
 
+#pragma mark AStar
+
 std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col) const {
     std::vector<std::pair<int, int>> path;
 
@@ -711,6 +742,8 @@ std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_
     path.clear();
     return path;
 }
+
+#pragma mark Engine
 
 Engine::Engine() {
     Mix_OpenAudio(44100, AUDIO_S16SYS, 2, 4096);

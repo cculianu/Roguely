@@ -115,19 +115,18 @@ std::string entity_group_name_to_string(EntityGroupName group_name);
 
 class Component {
 public:
-    virtual ~Component(){};
+    Component(const std::string & name, const std::string &id = generate_uuid()) : component_name(name), id(id) {}
+    virtual ~Component(){}
 
     std::string get_name() const { return component_name; }
     void set_name(const std::string & name) { component_name = name; }
     auto get_id() const { return id; }
 
-    Component(const std::string & name, std::string id = generate_uuid()) : component_name(name), id(id) {}
-
 private:
     std::string component_name;
 
 protected:
-    std::string id{};
+    std::string id;
 };
 
 template <class T>
@@ -319,7 +318,6 @@ private:
 
 // For Lua integration we don't need a bunch of custom components. We'll just
 // use a simple component that stores everything in a Lua table
-
 class LuaComponent : public Component {
     sol::table properties;
 public:
@@ -345,20 +343,7 @@ public:
     void set_property(const std::string & name, sol::object value) { properties.set(name, value); }
     void set_properties(sol::table props, sol::this_state) { properties = props; }
 
-    sol::table copy_table(const sol::table & original, sol::this_state s) {
-        sol::state_view lua(original.lua_state());
-        sol::table copy = lua.create_table();
-
-        original.for_each([&](const sol::object & key, const sol::object & value) {
-            if (value.is<sol::table>()) {
-                copy[key] = copy_table(value.as<sol::table>(), s);
-            } else {
-                copy[key] = value;
-            }
-        });
-
-        return copy;
-    }
+    static sol::table copy_table(const sol::table & original, sol::this_state s);
 };
 
 class SpriteSheet {
