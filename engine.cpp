@@ -1041,24 +1041,24 @@ bool Engine::check_game_config(sol::table game_config, sol::this_state) const {
     return result;
 }
 
-void Engine::draw_text(const std::string & t, int x, int y) { draw_text(t, x, y, 255, 255, 255, 255); }
+void Engine::draw_text(const std::string & t, int x, int y) const { draw_text(t, x, y, 255, 255, 255, 255); }
 
-void Engine::draw_text(const std::string & t, int x, int y, int r, int g, int b, int a) {
-    if (!(t.length() > 0)) return;
+void Engine::draw_text(const std::string & t, int x, int y, Uint8 r, Uint8 g, Uint8 b, Uint8 a) const {
+    if (t.empty()) return;
 
     if (!default_font.expired()) {
-        SDL_Color text_color = {(Uint8)r, (Uint8)g, (Uint8)b, (Uint8)a};
+        const SDL_Color text_color{.r = r, .g = g, .b = b, .a = a};
         default_font.lock()->draw_text(renderer, x, y, t, text_color);
     }
 }
 
-void Engine::draw_sprite(const std::string & spritesheet_name, int sprite_id, int x, int y, int scale_factor) {
+void Engine::draw_sprite(const std::string & spritesheet_name, int sprite_id, int x, int y, int scale_factor) const {
     if (auto it = sprite_sheets.find(spritesheet_name); it != sprite_sheets.end()) {
         it->second->draw_sprite(renderer, sprite_id, x, y, scale_factor);
     }
 }
 
-void Engine::set_draw_color(SDL_Renderer * renderer, int r, int g, int b, int a) const {
+void Engine::set_draw_color(SDL_Renderer * renderer, Uint8 r, Uint8 g, Uint8 b, Uint8 a) const {
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
 }
 
@@ -1070,12 +1070,12 @@ void Engine::draw_rect(SDL_Renderer * renderer, int x, int y, int w, int h) cons
 }
 
 void Engine::draw_filled_rect(SDL_Renderer * renderer, int x, int y, int w, int h) const {
-    const SDL_Rect r = {x, y, w, h};
+    const SDL_Rect r{.x = x, .y = y, .w = w, .h = h};
     SDL_RenderFillRect(renderer, &r);
 }
 
-void Engine::draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, int w, int h, int r, int g, int b, int a) const {
-    const SDL_Rect rect = {x, y, w, h};
+void Engine::draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a) const {
+    const SDL_Rect rect{.x = x, .y = y, .w = w, .h = h};
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
     SDL_RenderFillRect(renderer, &rect);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1091,8 +1091,8 @@ void Engine::draw_graphic(SDL_Renderer * renderer, const std::string & path, int
     auto graphic = IMG_Load(path.c_str());
     auto graphic_texture = SDL_CreateTextureFromSurface(renderer, graphic);
 
-    SDL_Rect src = {0, 0, graphic->w, graphic->h};
-    SDL_Rect dest = {x, y, graphic->w, graphic->h};
+    const SDL_Rect src = {.x = 0, .y = 0, .w = graphic->w, .h = graphic->h};
+    SDL_Rect dest = {.x = x, .y = y, .w = graphic->w, .h = graphic->h};
 
     if (scale_factor > 0) {
         if (centered) dest = {((window_width / (2 + (int)scale_factor)) - (graphic->w / 2)), y, graphic->w, graphic->h};
@@ -1110,12 +1110,10 @@ void Engine::draw_graphic(SDL_Renderer * renderer, const std::string & path, int
     SDL_DestroyTexture(graphic_texture);
 }
 
-void Engine::play_sound(const std::string & name) {
-    if (!(name.length() > 0)) return;
-
+void Engine::play_sound(const std::string & name) const {
+    if (name.empty()) return;
     auto sound = std::find_if(sounds.begin(), sounds.end(), [&](const auto & s) { return s->name == name; });
-
-    if (sound != sounds.end()) { (*sound)->play(); }
+    if (sound != sounds.end()) (*sound)->play();
 }
 
 /* static */
@@ -1184,9 +1182,9 @@ Dimension Engine::update_player_viewport(const Point & player_position, const Si
     view_port_width = view_port_x + VIEW_PORT_WIDTH;
     view_port_height = view_port_y + VIEW_PORT_HEIGHT;
 
-    const roguely::Dimension dim{.point = {.x = view_port_x, .y = view_port_y},
-                                 .supplemental_point = player_position,
-                                 .size = {.width = view_port_width, .height = view_port_height}};
+    const Dimension dim{.point = {.x = view_port_x, .y = view_port_y},
+                                  .supplemental_point = player_position,
+                                  .size = {.width = view_port_width, .height = view_port_height}};
     if (current_map_info.map != nullptr)
         current_map_info.map->calculate_field_of_view(dim);
     return dim;
@@ -1195,7 +1193,7 @@ Dimension Engine::update_player_viewport(const Point & player_position, const Si
 sol::function Engine::check_if_lua_function_defined(sol::this_state s, const std::string & name) const {
     sol::state_view lua(s);
     sol::function lua_func = lua[name];
-    if (!(lua_func.valid() && lua_func.get_type() == sol::type::function)) {
+    if (!lua_func.valid() || lua_func.get_type() != sol::type::function) {
         println("game script does not define the '{}' method.", name);
         return nullptr;
     }
@@ -1213,7 +1211,7 @@ void Engine::setup_lua_api(sol::this_state s) {
     });
     lua.set_function("draw_text", [&](const std::string & t, int x, int y) { draw_text(t, x, y); });
     lua.set_function("draw_text_with_color", [&](const std::string & t, int x, int y, int r, int g, int b, int a) {
-        draw_text(t, x, y, r, g, b, a);
+        draw_text(t, x, y, Uint8(r), Uint8(g), Uint8(b), Uint8(a));
     });
     lua.set_function("draw_sprite", [&](const std::string & spritesheet_name, int sprite_id, int x, int y) {
         draw_sprite(spritesheet_name, sprite_id, x, y, 0);
@@ -1226,12 +1224,12 @@ void Engine::setup_lua_api(sol::this_state s) {
         auto ss_i = sprite_sheets.find(spritesheet_name);
         if (ss_i != sprite_sheets.end()) { ss_i->second->draw_sprite_sheet(renderer, x, y); }
     });
-    lua.set_function("set_draw_color", [&](int r, int g, int b, int a) { set_draw_color(renderer, r, g, b, a); });
+    lua.set_function("set_draw_color", [&](int r, int g, int b, int a) { set_draw_color(renderer, Uint8(r), Uint8(g), Uint8(b), Uint8(a)); });
     lua.set_function("draw_point", [&](int x, int y) { draw_point(renderer, x, y); });
     lua.set_function("draw_rect", [&](int x, int y, int w, int h) { draw_rect(renderer, x, y, w, h); });
     lua.set_function("draw_filled_rect", [&](int x, int y, int w, int h) { draw_filled_rect(renderer, x, y, w, h); });
     lua.set_function("draw_filled_rect_with_color", [&](int x, int y, int w, int h, int r, int g, int b, int a) {
-        draw_filled_rect_with_color(renderer, x, y, w, h, r, g, b, a);
+        draw_filled_rect_with_color(renderer, x, y, w, h, Uint8(r), Uint8(g), Uint8(b), Uint8(a));
     });
     lua.set_function("draw_graphic",
                      [&](const std::string & path, int window_width, int x, int y, bool centered, int scale_factor) {
@@ -1456,7 +1454,7 @@ void Engine::setup_lua_api(sol::this_state s) {
     });
     lua.set_function("set_highlight_color", [&](const std::string & ss_name, int r, int g, int b) {
         if (auto it = sprite_sheets.find(ss_name); it != sprite_sheets.end())
-            it->second->set_highlight_color(r, g, b);
+            it->second->set_highlight_color(Uint8(r), Uint8(g), Uint8(b));
     });
     lua.set_function("reset_highlight_color", [&](const std::string & ss_name) {
         if (auto it = sprite_sheets.find(ss_name); it != sprite_sheets.end()) {

@@ -370,7 +370,7 @@ public:
     void remove_blocked_sprite(int sprite_id) { blocked_sprite_ids.erase(sprite_id); }
     bool is_sprite_blocked(int sprite_id) const { return blocked_sprite_ids.find(sprite_id) != blocked_sprite_ids.end(); }
 
-    void set_highlight_color(int r, int g, int b) { SDL_SetTextureColorMod(spritesheet_texture, r, g, b); }
+    void set_highlight_color(Uint8 r, Uint8 g, Uint8 b) { SDL_SetTextureColorMod(spritesheet_texture, r, g, b); }
 
     void reset_highlight_color() { SDL_SetTextureColorMod(spritesheet_texture, o_red, o_green, o_blue); }
 
@@ -476,17 +476,17 @@ private:
     void setup_lua_api(sol::this_state s);
     bool check_game_config(sol::table game_config, sol::this_state s) const;
     sol::function check_if_lua_function_defined(sol::this_state s, const std::string & name) const;
-    void play_sound(const std::string & name);
+    void play_sound(const std::string & name) const;
 
     // Drawing functions
-    void draw_text(const std::string & t, int x, int y);
-    void draw_text(const std::string & t, int x, int y, int r, int g, int b, int a);
-    void draw_sprite(const std::string & spritesheet_name, int sprite_id, int x, int y, int scale_factor);
-    void set_draw_color(SDL_Renderer * renderer, int r, int g, int b, int a) const;
+    void draw_text(const std::string & t, int x, int y) const;
+    void draw_text(const std::string & t, int x, int y, Uint8 r, Uint8 g, Uint8 b, Uint8 a) const;
+    void draw_sprite(const std::string & spritesheet_name, int sprite_id, int x, int y, int scale_factor) const;
+    void set_draw_color(SDL_Renderer * renderer, Uint8 r, Uint8 g, Uint8 b, Uint8 a) const;
     void draw_point(SDL_Renderer * renderer, int x, int y) const;
     void draw_rect(SDL_Renderer * renderer, int x, int y, int w, int h) const;
     void draw_filled_rect(SDL_Renderer * renderer, int x, int y, int w, int h) const;
-    void draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, int w, int h, int r, int g, int b, int a) const;
+    void draw_filled_rect_with_color(SDL_Renderer * renderer, int x, int y, int w, int h, Uint8 r, Uint8 g, Uint8 b, Uint8 a) const;
     void draw_graphic(SDL_Renderer * renderer, const std::string & path, int window_width, int x, int y, bool centered,
                       int scale_factor) const;
 
