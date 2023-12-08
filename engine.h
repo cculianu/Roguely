@@ -94,6 +94,7 @@ public:
 
 class Text {
 public:
+    ~Text();
     int load_font(const std::string & path, int ptsize);
     void draw_text(SDL_Renderer * renderer, int x, int y, const std::string & text);
     void draw_text(SDL_Renderer * renderer, int x, int y, const std::string & text, SDL_Color color);
@@ -105,8 +106,8 @@ private:
     SDL_Texture * text_texture{};
     SDL_Rect text_rect{};
 
-    SDL_Color text_color = {255, 255, 255, 255};
-    SDL_Color text_background_color = {0, 0, 0, 255};
+    SDL_Color text_color{.r = 255, .g = 255, .b = 255, .a = 255};
+    SDL_Color text_background_color{.r = 0, .g = 0, .b = 0, .a = 255};
 };
 
 enum class EntityGroupName { PLAYER, MOBS, ITEMS, OTHER };
@@ -392,6 +393,7 @@ public:
     Map() = default;
     Map(const std::string & n, int w, int h, std::shared_ptr<Matrix> m)
         : name(n), width(w), height(h), map(std::move(m)), light_map(std::make_shared<Matrix>(h, w, 0)){}
+    ~Map();
 
     void draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
                   const std::shared_ptr<SpriteSheet> & sprite_sheet,
@@ -466,13 +468,15 @@ private:
 class Engine {
 public:
     Engine();
+    ~Engine();
 
     int game_loop();
 
 private:
     // Internal functions
-    int init_sdl(sol::table game_config, sol::this_state s);
-    void tear_down_sdl();
+    int initialize(sol::table game_config, sol::this_state s);
+    void tear_down();
+
     void setup_lua_api(sol::this_state s);
     bool check_game_config(sol::table game_config, sol::this_state s) const;
     sol::function check_if_lua_function_defined(sol::this_state s, const std::string & name) const;
