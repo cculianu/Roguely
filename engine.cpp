@@ -77,7 +77,7 @@ std::shared_ptr<EntityGroup> EntityManager::create_entity_group(const std::strin
     auto entityGroup = std::make_shared<EntityGroup>();
     entityGroup->name = group_name;
     entityGroup->entities = std::make_shared<std::vector<std::shared_ptr<Entity>>>();
-    entity_groups->emplace_back(entityGroup);
+    entity_groups.push_back(entityGroup);
     return entityGroup;
 }
 
@@ -88,7 +88,7 @@ void EntityManager::add_entity_to_group(const std::string & group_name, std::sha
         group = std::make_shared<EntityGroup>();
         group->name = group_name;
         group->entities = std::make_unique<std::vector<std::shared_ptr<Entity>>>();
-        entity_groups->emplace_back(group);
+        entity_groups.push_back(group);
     }
     group->entities->emplace_back(e);
 
@@ -145,17 +145,17 @@ void EntityManager::remove_entity(const std::string & entity_group_name, const s
     }
 }
 
-std::shared_ptr<EntityGroup> EntityManager::get_entity_group(const std::string & group_name) {
-    auto group = std::ranges::find_if(*entity_groups,
-                                      [&](const std::shared_ptr<EntityGroup> & eg) { return eg->name == group_name; });
+std::shared_ptr<EntityGroup> EntityManager::get_entity_group(const std::string & group_name) const {
+    const auto it = std::find_if(entity_groups.begin(), entity_groups.end(),
+                                 [&](const std::shared_ptr<EntityGroup> & eg) { return eg->name == group_name; });
 
-    if (group != entity_groups->end()) { return *group; }
-
-    return nullptr;
+    if (it == entity_groups.end())
+        return nullptr;
+    return *it;
 }
 
 std::shared_ptr<std::vector<std::shared_ptr<Entity>>>
-EntityManager::get_entities_in_group(const std::string & group_name) {
+EntityManager::get_entities_in_group(const std::string & group_name) const {
     auto entity_group = get_entity_group(group_name);
 
     if (entity_group != nullptr) { return entity_group->entities; }
@@ -163,25 +163,24 @@ EntityManager::get_entities_in_group(const std::string & group_name) {
     return nullptr;
 }
 
-std::string EntityManager::get_entity_id_by_name(const std::string & group_name, const std::string & entity_name) {
+std::string EntityManager::get_entity_id_by_name(const std::string & group_name, const std::string & entity_name) const {
     auto entity = EntityManager::get_entity_by_name(group_name, entity_name);
     if (entity != nullptr) { return entity->get_id(); }
     return "";
 }
 
 std::shared_ptr<Entity> EntityManager::get_entity_by_name(const std::string & entity_group,
-                                                          const std::string & entity_name) {
+                                                          const std::string & entity_name) const {
     return find_entity(entity_group, [&](const std::shared_ptr<Entity> & e) { return e->get_name() == entity_name; });
 }
 
 std::shared_ptr<Entity> EntityManager::get_entity_by_id(const std::string & entity_group,
-                                                        const std::string & entity_id) {
+                                                        const std::string & entity_id) const {
     return find_entity(entity_group, [&](const std::shared_ptr<Entity> & e) { return e->get_id() == entity_id; });
 }
 
 std::shared_ptr<std::vector<std::shared_ptr<Entity>>>
-EntityManager::find_entities_in_group(const std::string & entity_group,
-                                      std::function<bool(std::shared_ptr<Entity>)> predicate) {
+EntityManager::find_entities_in_group(const std::string & entity_group, std::function<bool(std::shared_ptr<Entity>)> predicate) const {
     auto entity_group_ptr = get_entity_group(entity_group);
     auto entities = std::make_shared<std::vector<std::shared_ptr<Entity>>>();
 
@@ -197,7 +196,7 @@ EntityManager::find_entities_in_group(const std::string & entity_group,
 }
 
 std::shared_ptr<Entity> EntityManager::find_entity(const std::string & entity_group,
-                                                   std::function<bool(std::shared_ptr<Entity>)> predicate) {
+                                                   std::function<bool(std::shared_ptr<Entity>)> predicate) const {
     auto entity_group_ptr = get_entity_group(entity_group);
 
     if (entity_group_ptr != nullptr) {
@@ -210,16 +209,50 @@ std::shared_ptr<Entity> EntityManager::find_entity(const std::string & entity_gr
     return nullptr;
 }
 
-bool EntityManager::lua_entities_for_each(std::function<bool(sol::table)> predicate) {
+sol::table EntityManager::get_lua_entity(const std::string & entity_group, const std::string & entity_name) const {
+    sol::table entities = lua_entities[entity_group];
+    sol::table result = sol::nil;
+
+    if (!entities.valid()) {
+        println("get_lua_entity: entities is not valid");
+        return result;
+    }
+
+    entities.for_each([&](const sol::object & key, const sol::table & value) {
+        if (key.is<std::string>()) {
+            std::string key_str = key.as<std::string>();
+            if (key_str.compare(0, entity_name.size(), entity_name) == 0) {
+                result = value;
+                return false;
+            }
+        }
+        return true;
+    });
+
+    return result;
+}
+
+void EntityManager::remove_lua_component(const std::string & entity_group, const std::string & entity_name,
+                                         const std::string & component_name) {
+    auto entity = get_lua_entity(entity_group, entity_name);
+    if (entity.valid()) {
+        auto components = entity["components"];
+        if (components.valid()) {
+            components[component_name] = sol::nil;
+            // println("removed component {} from entity {}", component_name, entity_name);
+        }
+    }
+}
+
+bool EntityManager::lua_entities_for_each(std::function<bool(sol::table)> predicate) const {
     bool result = false;
 
-    for (const auto & eg : *entity_groups) {
+    for (const auto & eg : entity_groups) {
         for (const auto & e : *eg->entities) {
             auto lua_component = e->find_first_component_by_type<LuaComponent>();
-
             if (lua_component != nullptr) {
                 auto lua_components_table = lua_component->get_properties();
-
+                // FIXME: do we stop iterating if result is false?
                 if (lua_components_table.valid()) { result = predicate(lua_components_table); }
             }
         }
@@ -231,7 +264,7 @@ bool EntityManager::lua_entities_for_each(std::function<bool(sol::table)> predic
 bool EntityManager::lua_is_point_unique(const Point & point) const {
     auto result = true;
 
-    for (const auto & eg : *entity_groups) {
+    for (const auto & eg : entity_groups) {
         for (const auto & e : *eg->entities) {
             auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
@@ -259,7 +292,7 @@ bool EntityManager::lua_is_point_unique(const Point & point) const {
 
 void EntityManager::lua_for_each_overlapping_point(const std::string & entity_name, int x, int y,
                                                    sol::function point_callback) {
-    for (const auto & eg : *entity_groups) {
+    for (const auto & eg : entity_groups) {
         for (const auto & e : *eg->entities) {
             auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
@@ -353,7 +386,7 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
     sol::state_view lua(s);
     sol::table result = lua.create_table();
 
-    for (const auto & eg : *entity_groups) {
+    for (const auto & eg : entity_groups) {
         for (const auto & e : *eg->entities) {
             auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
@@ -378,6 +411,7 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
 
     return result;
 }
+
 
 SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh, int sf) {
     path = p;

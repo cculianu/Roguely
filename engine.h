@@ -137,107 +137,84 @@ class Entity {
 public:
     Entity() : Entity(generate_uuid(), "unnamed entity") {}
     Entity(const std::string & name) : Entity(generate_uuid(), name) {}
-    Entity(const std::string & id, const std::string & name) : id(id), name(name) {
-        components = std::make_unique<std::vector<std::shared_ptr<Component>>>();
-    }
+    Entity(const std::string & id, const std::string & name) : id(id), name(name) {}
 
     template <ComponentType T>
-    std::shared_ptr<T> find_first_component_by_type() {
-        for (auto & c : *components) {
-            auto casted = std::dynamic_pointer_cast<T>(c);
-
-            if (casted != nullptr) { return casted; }
-        }
-
+    std::shared_ptr<T> find_first_component_by_type() const {
+        for (auto & c : components)
+            if (auto casted = std::dynamic_pointer_cast<T>(c))
+                return casted;
         return nullptr;
     }
 
     template <ComponentType T>
-    std::shared_ptr<T> find_first_component_by_name(const std::string & name) {
+    std::shared_ptr<T> find_first_component_by_name(const std::string & name) const {
         std::vector<std::shared_ptr<T>> matches{};
-
-        for (auto & c : *components) {
-            auto casted = std::dynamic_pointer_cast<T>(c);
-
-            if (casted != nullptr && casted->get_name() == name) { return casted; }
-        }
-
+        for (auto & c : components)
+            if (auto casted = std::dynamic_pointer_cast<T>(c); casted && casted->get_name() == name)
+                return casted;
         return nullptr;
     }
 
     template <ComponentType T>
-    auto find_components_by_name(const std::string & name) {
-        std::vector<std::shared_ptr<T>> matches{};
-
-        for (auto & c : *components) {
-            auto casted = std::dynamic_pointer_cast<T>(c);
-
-            if (casted != nullptr && casted->get_name() == name) { matches.emplace_back(casted); }
-        }
-
+    auto find_components_by_name(const std::string & name) const {
+        std::vector<std::shared_ptr<T>> matches;
+        for (auto & c : components)
+            if (auto casted = std::dynamic_pointer_cast<T>(c); casted && casted->get_name() == name)
+                matches.push_back(casted);
         return matches;
     }
 
     template <ComponentType T>
-    auto find_components_by_type() {
-        std::vector<std::shared_ptr<T>> matches{};
-
-        for (auto & c : *components) {
-            auto casted = std::dynamic_pointer_cast<T>(c);
-
-            if (casted != nullptr) { matches.emplace_back(casted); }
-        }
-
+    auto find_components_by_type() const {
+        std::vector<std::shared_ptr<T>> matches;
+        for (auto & c : components)
+            if (auto casted = std::dynamic_pointer_cast<T>(c))
+                matches.push_back(casted);
         return matches;
     }
 
     template <ComponentType T>
-    auto find_components_by_type(std::function<bool(std::shared_ptr<T>)> predicate) {
-        std::vector<std::shared_ptr<T>> matches{};
-
-        for (auto & c : *components) {
-            auto casted = std::dynamic_pointer_cast<T>(c);
-
-            if (casted != nullptr && predicate(casted)) { matches.emplace_back(casted); }
-        }
-
+    auto find_components_by_type(std::function<bool(std::shared_ptr<T>)> predicate) const {
+        std::vector<std::shared_ptr<T>> matches;
+        for (auto & c : components)
+            if (auto casted = std::dynamic_pointer_cast<T>(c); casted && predicate(casted))
+                matches.push_back(casted);
         return matches;
     }
 
     auto get_name() const { return name; }
     auto get_id() const { return id; }
-    void add_component(std::shared_ptr<Component> c) { components->emplace_back(c); }
-    void add_components(std::vector<std::shared_ptr<Component>> c) {
-        components->insert(components->end(), c.begin(), c.end());
+    void add_component(const std::shared_ptr<Component> & c) { components.push_back(c); }
+    void add_components(const std::vector<std::shared_ptr<Component>> & c) {
+        components.insert(components.end(), c.begin(), c.end());
     }
 
     template <ComponentType T>
-    void remove_components(std::vector<std::shared_ptr<T>> c) {
-        for (auto & component : c) {
-            auto it = std::find(components->begin(), components->end(), component);
-            if (it != components->end()) { components->erase(it); }
-        }
+    void remove_components(const std::vector<std::shared_ptr<T>> & cvec) {
+        for (auto & component : cvec)
+            remove_component(component);
     }
 
     template <ComponentType T>
-    void remove_component(std::shared_ptr<T> component) {
-        auto it = std::find(components->begin(), components->end(), component);
-        if (it != components->end()) { components->erase(it); }
+    void remove_component(const std::shared_ptr<T> & component) {
+        auto it = std::find(components.begin(), components.end(), component);
+        if (it != components.end()) it = components.erase(it);
     }
 
-    void for_each_component(std::function<void(std::shared_ptr<Component> &)> fc) {
-        for (auto & c : *components) { fc(c); }
+    void for_each_component(const std::function<void(const std::shared_ptr<Component> &)> & fc) const {
+        for (auto & c : components) fc(c);
     }
 
-    void clear_components() { components->clear(); }
-    auto get_component_count() const { return components->size(); }
+    void clear_components() { components.clear(); }
+    size_t get_component_count() const { return components.size(); }
 
 private:
     std::string id{};
 
 protected:
     std::string name;
-    std::unique_ptr<std::vector<std::shared_ptr<Component>>> components{};
+    std::vector<std::shared_ptr<Component>> components;
 };
 
 struct EntityGroup {
@@ -249,7 +226,6 @@ class EntityManager {
 public:
     EntityManager(sol::this_state s) {
         sol::state_view lua(s);
-        entity_groups = std::make_unique<std::vector<std::shared_ptr<EntityGroup>>>();
         lua_entities = lua.create_table();
     }
 
@@ -262,33 +238,33 @@ public:
     std::shared_ptr<Entity> create_entity_in_group(const std::string & group_name, const std::string & entity_name);
     void remove_entity(const std::string & entity_group_name, const std::string & entity_id);
 
-    std::vector<std::string> get_entity_group_names() {
+    std::vector<std::string> get_entity_group_names() const {
         std::vector<std::string> results;
-        results.reserve(entity_groups->size());
-        for (auto & eg : *entity_groups) { results.emplace_back(eg->name); }
+        results.reserve(entity_groups.size());
+        for (const auto & eg : entity_groups) { results.push_back(eg->name); }
         return results;
     }
-    std::shared_ptr<EntityGroup> get_entity_group(const std::string & group_name);
-    std::shared_ptr<EntityGroup> get_entity_group(EntityGroupName group_name) {
+    std::shared_ptr<EntityGroup> get_entity_group(const std::string & group_name) const;
+    std::shared_ptr<EntityGroup> get_entity_group(EntityGroupName group_name) const {
         return get_entity_group(entity_group_name_to_string(group_name));
     }
-    std::shared_ptr<std::vector<std::shared_ptr<Entity>>> get_entities_in_group(const std::string & group_name);
-    std::shared_ptr<std::vector<std::shared_ptr<Entity>>> get_entities_in_group(EntityGroupName group_name) {
+    std::shared_ptr<std::vector<std::shared_ptr<Entity>>> get_entities_in_group(const std::string & group_name) const;
+    std::shared_ptr<std::vector<std::shared_ptr<Entity>>> get_entities_in_group(EntityGroupName group_name) const {
         return get_entities_in_group(entity_group_name_to_string(group_name));
     }
 
-    std::string get_entity_id_by_name(const std::string & group_name, const std::string & entity_name);
-    std::shared_ptr<Entity> get_entity_by_name(const std::string & group_name, const std::string & entity_name);
-    std::shared_ptr<Entity> get_entity_by_name(EntityGroupName group_name, const std::string & entity_name) {
+    std::string get_entity_id_by_name(const std::string & group_name, const std::string & entity_name) const;
+    std::shared_ptr<Entity> get_entity_by_name(const std::string & group_name, const std::string & entity_name) const;
+    std::shared_ptr<Entity> get_entity_by_name(EntityGroupName group_name, const std::string & entity_name) const {
         return get_entity_by_name(entity_group_name_to_string(group_name), entity_name);
     }
-    std::shared_ptr<Entity> get_entity_by_id(const std::string & group_name, const std::string & entity_id);
-    std::shared_ptr<Entity> get_entity_by_id(EntityGroupName group_name, const std::string & entity_id) {
+    std::shared_ptr<Entity> get_entity_by_id(const std::string & group_name, const std::string & entity_id) const;
+    std::shared_ptr<Entity> get_entity_by_id(EntityGroupName group_name, const std::string & entity_id) const {
         return get_entity_by_id(entity_group_name_to_string(group_name), entity_id);
     }
 
     template <typename T>
-    auto find_entities_by_component_type(std::string entity_group, std::function<bool(std::shared_ptr<T>)> predicate) {
+    auto find_entities_by_component_type(std::string entity_group, std::function<bool(std::shared_ptr<T>)> predicate) const {
         auto group = get_entity_group(entity_group);
 
         std::vector<std::shared_ptr<Entity>> matches{};
@@ -301,58 +277,27 @@ public:
     }
 
     std::shared_ptr<std::vector<std::shared_ptr<Entity>>>
-    find_entities_in_group(const std::string & entity_group, std::function<bool(std::shared_ptr<Entity>)> predicate);
+    find_entities_in_group(const std::string & entity_group, std::function<bool(std::shared_ptr<Entity>)> predicate) const;
 
     std::shared_ptr<Entity> find_entity(const std::string & entity_group,
-                                        std::function<bool(std::shared_ptr<Entity>)> predicate);
+                                        std::function<bool(std::shared_ptr<Entity>)> predicate) const;
     std::shared_ptr<Entity> find_entity(EntityGroupName entity_group,
-                                        std::function<bool(std::shared_ptr<Entity>)> predicate) {
+                                        std::function<bool(std::shared_ptr<Entity>)> predicate) const {
         return find_entity(entity_group_name_to_string(entity_group), predicate);
     }
 
     sol::table get_lua_entities() const { return lua_entities; }
-    sol::table get_lua_entity(const std::string & entity_group, const std::string & entity_name) {
-        sol::table entities = lua_entities[entity_group];
-        sol::table result = sol::nil;
+    sol::table get_lua_entity(const std::string & entity_group, const std::string & entity_name) const;
+    void remove_lua_component(const std::string & entity_group, const std::string & entity_name, const std::string & component_name);
 
-        if (!entities.valid()) {
-            println("get_lua_entity: entities is not valid");
-            return result;
-        }
-
-        entities.for_each([&](const sol::object & key, const sol::table & value) {
-            if (key.is<std::string>()) {
-                std::string key_str = key.as<std::string>();
-                if (key_str.compare(0, entity_name.size(), entity_name) == 0) {
-                    result = value;
-                    return false;
-                }
-            }
-            return true;
-        });
-
-        return result;
-    }
-    void remove_lua_component(const std::string & entity_group, const std::string & entity_name,
-                              const std::string & component_name) {
-        auto entity = get_lua_entity(entity_group, entity_name);
-        if (entity.valid()) {
-            auto components = entity["components"];
-            if (components.valid()) {
-                components[component_name] = sol::nil;
-                // println("removed component {} from entity {}", component_name, entity_name);
-            }
-        }
-    }
-
-    bool lua_entities_for_each(std::function<bool(sol::table)> predicate);
+    bool lua_entities_for_each(std::function<bool(sol::table)> predicate) const;
     bool lua_is_point_unique(const Point & point) const;
     void lua_for_each_overlapping_point(const std::string & entity_name, int x, int y, sol::function point_callback);
     sol::table get_lua_blocked_points(const std::string & entity_group, int x, int y, const std::string & direction,
                                       sol::this_state s);
     sol::table get_lua_entities_in_viewport(std::function<bool(int x, int y)> predicate, sol::this_state s);
 
-    sol::table copy_table(const sol::table & original, sol::this_state s) {
+    static sol::table copy_table(const sol::table & original, sol::this_state s) {
         sol::state_view lua(original.lua_state());
         sol::table copy = lua.create_table();
 
@@ -368,7 +313,7 @@ public:
     }
 
 private:
-    std::unique_ptr<std::vector<std::shared_ptr<EntityGroup>>> entity_groups{};
+    std::vector<std::shared_ptr<EntityGroup>> entity_groups;
     sol::table lua_entities{};
 };
 
