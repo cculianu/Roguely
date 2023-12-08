@@ -8,6 +8,7 @@
 #include <source_location>
 #include <stdexcept>
 
+namespace roguely {
 namespace {
 std::mutex gen_mut;
 std::mt19937 gen_mt(std::random_device{}());
@@ -19,13 +20,11 @@ int generate_random_int(int min, int max) {
 }
 } // namespace
 
-namespace roguely {
 /* static */ std::atomic_size_t Id::nextId{1u};
 std::string Id::to_string() const { return std::format("{}", id); }
 std::string generate_uuid() { return Id().to_string(); }
-} // namespace roguely
 
-namespace roguely::level_generation {
+namespace level_generation {
 
 int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y) {
     int wall_count = 0;
@@ -79,7 +78,6 @@ std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height) {
 }
 } // namespace roguely::level_generation
 
-namespace roguely::common {
 int Text::load_font(const std::string & path, int ptsize) {
     font = TTF_OpenFont(path.c_str(), ptsize);
 
@@ -117,9 +115,7 @@ void Text::draw_text(SDL_Renderer * renderer, int x, int y, const std::string & 
 
     SDL_RenderCopy(renderer, text_texture, nullptr, &text_rect);
 }
-} // namespace roguely::common
 
-namespace roguely::ecs {
 std::string entity_group_name_to_string(EntityGroupName group_name) {
     std::string gn = "unknown";
     switch (group_name) {
@@ -157,7 +153,7 @@ void EntityManager::add_entity_to_group(const std::string & group_name, std::sha
     } else
         lua_entity_table = lua_entities[group_name];
 
-    auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
+    auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
     if (lua_component != nullptr) {
         auto full_name = std::format("{}-{}", e->get_name(), e->get_id());
@@ -273,7 +269,7 @@ bool EntityManager::lua_entities_for_each(std::function<bool(sol::table)> predic
 
     for (const auto & eg : *entity_groups) {
         for (const auto & e : *eg->entities) {
-            auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
+            auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
             if (lua_component != nullptr) {
                 auto lua_components_table = lua_component->get_properties();
@@ -286,12 +282,12 @@ bool EntityManager::lua_entities_for_each(std::function<bool(sol::table)> predic
     return result;
 }
 
-bool EntityManager::lua_is_point_unique(roguely::common::Point point) {
+bool EntityManager::lua_is_point_unique(const Point & point) const {
     auto result = true;
 
     for (const auto & eg : *entity_groups) {
         for (const auto & e : *eg->entities) {
-            auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
+            auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
             if (lua_component != nullptr) {
                 auto lua_components_table = lua_component->get_properties();
@@ -307,10 +303,6 @@ bool EntityManager::lua_is_point_unique(roguely::common::Point point) {
                             break;
                         }
                     }
-                    // else
-                    // {
-                    //   println("position_component is not valid: {}", e->get_name());
-                    // }
                 }
             }
         }
@@ -323,7 +315,7 @@ void EntityManager::lua_for_each_overlapping_point(const std::string & entity_na
                                                    sol::function point_callback) {
     for (const auto & eg : *entity_groups) {
         for (const auto & e : *eg->entities) {
-            auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
+            auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
             if (e->get_name() != entity_name && lua_component != nullptr) {
                 auto lua_components_table = lua_component->get_properties();
@@ -357,7 +349,7 @@ sol::table EntityManager::get_lua_blocked_points(const std::string & entity_grou
     sol::table result = lua.create_table();
 
     for (const auto & e : *eg->entities) {
-        auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
+        auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
         if (lua_component != nullptr) {
             auto lua_components_table = lua_component->get_properties();
@@ -417,7 +409,7 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
 
     for (const auto & eg : *entity_groups) {
         for (const auto & e : *eg->entities) {
-            auto lua_component = e->find_first_component_by_type<roguely::components::LuaComponent>();
+            auto lua_component = e->find_first_component_by_type<LuaComponent>();
 
             if (lua_component != nullptr) {
                 auto lua_components_table = lua_component->get_properties();
@@ -440,9 +432,7 @@ sol::table EntityManager::get_lua_entities_in_viewport(std::function<bool(int x,
 
     return result;
 }
-} // namespace roguely::ecs
 
-namespace roguely::sprites {
 SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh, int sf) {
     path = p;
     name = n;
@@ -545,11 +535,9 @@ sol::table SpriteSheet::get_sprites_as_lua_table(sol::this_state s) const {
 
     return sprites_table;
 }
-} // namespace roguely::sprites
 
-namespace roguely::map {
-void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & dimensions,
-                   const std::shared_ptr<roguely::sprites::SpriteSheet> & sprite_sheet,
+void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
+                   const std::shared_ptr<SpriteSheet> & sprite_sheet,
                    const std::function<void(int, int, int, int, int, int, int)> & draw_hook) {
     int scale_factor = sprite_sheet->get_scale_factor();
     int sprite_width = sprite_sheet->get_sprite_width();
@@ -598,7 +586,7 @@ void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & d
     SDL_RenderCopy(renderer, current_map_segment_texture, NULL, &destination);
 }
 
-void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & dimensions, int dest_x, int dest_y, int a,
+void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions, int dest_x, int dest_y, int a,
                    const std::function<void(int, int, int)> & draw_hook) {
     if (current_full_map_dimension != dimensions) {
         current_full_map_dimension = dimensions;
@@ -627,7 +615,7 @@ void Map::draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & d
     SDL_RenderCopy(renderer, current_full_map_texture, NULL, &destination);
 }
 
-void Map::calculate_field_of_view(const roguely::common::Dimension & dimensions) {
+void Map::calculate_field_of_view(const Dimension & dimensions) {
     light_map = std::make_shared<Matrix>(height, width, 0);
 
     // Iterate through all angles in the 360-degree field of view
@@ -654,11 +642,11 @@ void Map::calculate_field_of_view(const roguely::common::Dimension & dimensions)
     }
 }
 
-roguely::common::Point Map::get_random_point(const std::set<int> & off_limit_sprites_ids) const {
+Point Map::get_random_point(const std::set<int> & off_limit_sprites_ids) const {
     if (width <= 0 || height <= 0) { throw std::runtime_error("Empty map"); }
 
     if (off_limit_sprites_ids.empty()) {
-        return roguely::common::Point{generate_random_int(0, height - 1), generate_random_int(0, width - 1)};
+        return Point{.x = generate_random_int(0, height - 1), .y = generate_random_int(0, width - 1)};
     }
 
     size_t maxAttempts = static_cast<size_t>(height) * static_cast<size_t>(width);
@@ -670,7 +658,7 @@ roguely::common::Point Map::get_random_point(const std::set<int> & off_limit_spr
 
         if ( ! off_limit_sprites_ids.contains((*map)(row, col))) {
             // println("Found random point: ({},{}) = {}", row, col, (*map)(row, col));
-            return roguely::common::Point{col, row};
+            return Point{.x = col, .y = row};
         }
     }
 
@@ -743,15 +731,13 @@ std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_
     path.clear();
     return path;
 }
-} // namespace roguely::map
 
-namespace roguely::engine {
 Engine::Engine() {
     Mix_OpenAudio(44100, AUDIO_S16SYS, 2, 4096);
     Mix_Volume(-1, 3);
     Mix_VolumeMusic(5);
 
-    entity_manager = std::make_unique<roguely::ecs::EntityManager>(lua.lua_state());
+    entity_manager = std::make_unique<EntityManager>(lua.lua_state());
 }
 
 int Engine::init_sdl(sol::table game_config, sol::this_state) {
@@ -817,13 +803,13 @@ int Engine::init_sdl(sol::table game_config, sol::this_state) {
 
     // FIXME: Need to create a way for user defined Text objects
     // std::string font_path = game_config["font_path"];
-    // text_medium = std::make_unique<roguely::common::Text>();
+    // text_medium = std::make_unique<Text>();
     // text_medium->load_font(font_path, 32);
 
     // Load the spritesheet (FIXME: add ability to load more than one spritesheet)
     sprite_sheets.clear();
     sprite_sheets.try_emplace(game_config["spritesheet_name"],
-                              std::make_shared<roguely::sprites::SpriteSheet>(
+                              std::make_shared<SpriteSheet>(
                                   renderer, game_config["spritesheet_name"], game_config["spritesheet_path"],
                                   game_config["spritesheet_sprite_width"], game_config["spritesheet_sprite_height"],
                                   game_config["spritesheet_sprite_scale_factor"]));
@@ -845,8 +831,8 @@ int Engine::init_sdl(sol::table game_config, sol::this_state) {
                 if (!std::filesystem::exists(sound_path)) {
                     println("sound file does not exist: {}", sound_path);
                 } else {
-                    roguely::common::Sound s{sound_name, Mix_LoadWAV(sound_path.c_str())};
-                    sounds.push_back(std::make_shared<roguely::common::Sound>(s));
+                    Sound s{sound_name, Mix_LoadWAV(sound_path.c_str())};
+                    sounds.push_back(std::make_shared<Sound>(s));
                 }
             }
         }
@@ -1116,24 +1102,23 @@ void Engine::play_sound(const std::string & name) {
 }
 
 /* static */
-std::shared_ptr<roguely::map::Map> Engine::generate_map(const std::string & name, int map_width, int map_height) {
+std::shared_ptr<Map> Engine::generate_map(const std::string & name, int map_width, int map_height) {
     auto map = roguely::level_generation::init_cellular_automata(map_width, map_height);
     roguely::level_generation::perform_cellular_automaton(*map, map_width, map_height, 10);
 
-    return std::make_shared<roguely::map::Map>(name, map_width, map_height, std::move(map));
+    return std::make_shared<Map>(name, map_width, map_height, std::move(map));
 }
 
-roguely::common::Dimension Engine::update_player_viewport(const roguely::common::Point & player_position,
-                                                          const roguely::common::Size & current_map,
-                                                          const roguely::common::Size & initial_view_port [[maybe_unused]]) {
+Dimension Engine::update_player_viewport(const Point & player_position, const Size & current_map,
+                                         const Size & initial_view_port [[maybe_unused]]) {
     view_port_x = std::clamp(player_position.x - (VIEW_PORT_WIDTH / 2), 0, current_map.width - VIEW_PORT_WIDTH);
     view_port_y = std::clamp(player_position.y - (VIEW_PORT_HEIGHT / 2), 0, current_map.height - VIEW_PORT_HEIGHT);
     view_port_width = view_port_x + VIEW_PORT_WIDTH;
     view_port_height = view_port_y + VIEW_PORT_HEIGHT;
 
-    const roguely::common::Dimension dim{.point = {.x = view_port_x, .y = view_port_y},
-                                         .supplemental_point = player_position,
-                                         .size = {.width = view_port_width, .height = view_port_height}};
+    const roguely::Dimension dim{.point = {.x = view_port_x, .y = view_port_y},
+                                 .supplemental_point = player_position,
+                                 .size = {.width = view_port_width, .height = view_port_height}};
     if (current_map_info.map != nullptr)
         current_map_info.map->calculate_field_of_view(dim);
     return dim;
@@ -1196,7 +1181,7 @@ void Engine::setup_lua_api(sol::this_state s) {
     lua.set_function("get_random_point_on_map", [&](sol::this_state s) {
         sol::state_view lua(s);
         if (current_map_info.map != nullptr) {
-            roguely::common::Point point{0, 0};
+            Point point{0, 0};
 
             do {
                 point = current_map_info.map->get_random_point({0});
@@ -1267,9 +1252,9 @@ void Engine::setup_lua_api(sol::this_state s) {
     });
     lua.set_function("add_entity", [&](const std::string & group_name, const std::string & name, sol::table components,
                                        sol::this_state s) {
-        auto entity = std::make_shared<roguely::ecs::Entity>(name);
+        auto entity = std::make_shared<Entity>(name);
         auto components_copy = entity_manager->copy_table(components, s);
-        auto lua_component = std::make_shared<roguely::components::LuaComponent>("lua component", components_copy, s);
+        auto lua_component = std::make_shared<LuaComponent>("lua component", components_copy, s);
         entity->add_component(lua_component);
         entity_manager->add_entity_to_group(group_name, entity, s);
     });
@@ -1286,7 +1271,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                          sol::state_view lua(s);
                          auto entity = entity_manager->get_entity_by_name(entity_group_name, entity_name);
                          if (entity != nullptr) {
-                             auto component = entity->find_first_component_by_type<roguely::components::LuaComponent>();
+                             auto component = entity->find_first_component_by_type<LuaComponent>();
                              if (component != nullptr) {
                                  auto lua_component = component->get_property<sol::table>(component_name);
 
@@ -1300,7 +1285,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                                                 sol::object value, sol::this_state) {
         auto entity = entity_manager->get_entity_by_name(entity_group_name, entity_name);
         if (entity != nullptr) {
-            auto component = entity->find_first_component_by_type<roguely::components::LuaComponent>();
+            auto component = entity->find_first_component_by_type<LuaComponent>();
             if (component != nullptr) {
                 auto lua_component = component->get_property<sol::table>(component_name);
                 if (lua_component != sol::nil) { lua_component.set(key, value); }
@@ -1355,7 +1340,7 @@ void Engine::setup_lua_api(sol::this_state s) {
         if (current_map_info.map != nullptr) { current_map_info.map->trigger_redraw(); }
     });
     lua.set_function("add_font", [&](const std::string & name, const std::string & font_path, int font_size) {
-        auto text = std::make_shared<roguely::common::Text>();
+        auto text = std::make_shared<Text>();
         text->load_font(font_path, font_size);
         texts.try_emplace(name, text);
         default_font = text;
@@ -1366,7 +1351,7 @@ void Engine::setup_lua_api(sol::this_state s) {
     });
     lua.set_function("get_adjacent_points", [&](int x, int y, sol::this_state s) {
         sol::state_view lua(s);
-        std::vector<roguely::common::Point> points = {/* UP    */ {x, y - 1},
+        std::vector<Point> points = {/* UP    */ {x, y - 1},
                                                       /* DOWN  */ {x, y + 1},
                                                       /* LEFT  */ {x - 1, y},
                                                       /* RIGHT */ {x + 1, y}};
@@ -1412,4 +1397,5 @@ void Engine::setup_lua_api(sol::this_state s) {
         }
     });
 }
-} // namespace roguely::engine
+
+} // namespace roguely

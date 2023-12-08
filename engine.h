@@ -23,6 +23,7 @@
 #include <sol/sol.hpp>
 
 namespace roguely {
+
 class Id {
     static std::atomic_size_t nextId;
     size_t id{};
@@ -33,7 +34,9 @@ public:
     std::string to_string() const;
     size_t get() const { return id; }
 };
+
 std::string generate_uuid();
+
 template<typename ...Args>
 void println(std::format_string<Args...> fmt, Args && ...args) {
     std::cout << std::format(std::move(fmt), std::forward<Args>(args)...) << std::endl;
@@ -52,18 +55,16 @@ public:
     size_t size2() const { return nc; }
     void clear() { *this = GenericMatrix<T>(nr, nc); }
 };
+
 using Matrix = GenericMatrix<int>;
-} // namespace roguely
 
-namespace roguely::level_generation {
-// Quick and dirty cellular automata that I learned about from YouTube. We can do more but currently are just doing the
-// very least to get a playable level.
-int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y);
-void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes);
-std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height);
+namespace level_generation {
+    // Quick and dirty cellular automata that I learned about from YouTube. We can do more but currently are just doing the
+    // very least to get a playable level.
+    int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y);
+    void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes);
+    std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height);
 } // namespace roguely::level_generation
-
-namespace roguely::common {
 
 struct Point {
     bool operator==(const Point & p) const { return p.x == x && p.y == y; }
@@ -115,9 +116,6 @@ private:
     SDL_Color text_color = {255, 255, 255, 255};
     SDL_Color text_background_color = {0, 0, 0, 255};
 };
-} // namespace roguely::common
-
-namespace roguely::ecs {
 
 enum class EntityGroupName { PLAYER, MOBS, ITEMS, OTHER };
 
@@ -141,7 +139,7 @@ protected:
 };
 
 template <class T>
-concept ComponentType = std::is_base_of<roguely::ecs::Component, T>::value;
+concept ComponentType = std::is_base_of<Component, T>::value;
 
 class Entity {
 public:
@@ -356,7 +354,7 @@ public:
     }
 
     bool lua_entities_for_each(std::function<bool(sol::table)> predicate);
-    bool lua_is_point_unique(roguely::common::Point point);
+    bool lua_is_point_unique(const Point & point) const;
     void lua_for_each_overlapping_point(const std::string & entity_name, int x, int y, sol::function point_callback);
     sol::table get_lua_blocked_points(const std::string & entity_group, int x, int y, const std::string & direction,
                                       sol::this_state s);
@@ -381,13 +379,12 @@ private:
     std::unique_ptr<std::vector<std::shared_ptr<EntityGroup>>> entity_groups{};
     sol::table lua_entities{};
 };
-} // namespace roguely::ecs
 
-namespace roguely::components {
 // For Lua integration we don't need a bunch of custom components. We'll just
 // use a simple component that stores everything in a Lua table
 
-class LuaComponent : public roguely::ecs::Component {
+class LuaComponent : public Component {
+    sol::table properties;
 public:
     LuaComponent(const std::string & n, sol::table props, sol::this_state s) : Component(n) {
         sol::state_view lua(s);
@@ -425,13 +422,8 @@ public:
 
         return copy;
     }
-
-private:
-    sol::table properties;
 };
-} // namespace roguely::components
 
-namespace roguely::sprites {
 class SpriteSheet {
 public:
     SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh, int sf);
@@ -472,23 +464,21 @@ private:
     std::vector<SDL_Rect> sprites;
     SDL_Texture * spritesheet_texture{};
 };
-} // namespace roguely::sprites
 
-namespace roguely::map {
 class Map {
 public:
     Map() = default;
     Map(const std::string & n, int w, int h, std::shared_ptr<Matrix> m)
         : name(n), width(w), height(h), map(std::move(m)), light_map(std::make_shared<Matrix>(h, w, 0)){}
 
-    void draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & dimensions,
-                  const std::shared_ptr<roguely::sprites::SpriteSheet> & sprite_sheet,
+    void draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
+                  const std::shared_ptr<SpriteSheet> & sprite_sheet,
                   const std::function<void(int, int, int, int, int, int, int)> & draw_hook);
 
-    void draw_map(SDL_Renderer * renderer, const roguely::common::Dimension & dimensions, int x, int y, int a,
+    void draw_map(SDL_Renderer * renderer, const Dimension & dimensions, int x, int y, int a,
                   const std::function<void(int, int, int)> & draw_hook);
 
-    void calculate_field_of_view(const roguely::common::Dimension & dimensions);
+    void calculate_field_of_view(const Dimension & dimensions);
 
     auto get_name() const { return name; }
     auto get_width() const { return width; }
@@ -496,7 +486,7 @@ public:
     auto get_map() const { return map; }
     auto get_light_map() const { return light_map; }
 
-    auto map_to_world(int x, int y, roguely::common::Dimension dimensions, const roguely::sprites::SpriteSheet & sprite_sheet) const {
+    auto map_to_world(int x, int y, Dimension dimensions, const SpriteSheet & sprite_sheet) const {
         int scale_factor = sprite_sheet.get_scale_factor();
         int sprite_width = sprite_sheet.get_sprite_width();
         int sprite_height = sprite_sheet.get_sprite_height();
@@ -504,10 +494,10 @@ public:
         int dx = (x * sprite_width * scale_factor) - (dimensions.point.x * sprite_width * scale_factor);
         int dy = (y * sprite_height * scale_factor) - (dimensions.point.y * sprite_height * scale_factor);
 
-        return roguely::common::Point{dx, dy};
+        return Point{dx, dy};
     }
 
-    roguely::common::Point get_random_point(const std::set<int> & off_limit_sprites_ids) const;
+    Point get_random_point(const std::set<int> & off_limit_sprites_ids) const;
 
     void trigger_redraw() { current_map_segment_dimension = {}; }
 
@@ -516,8 +506,8 @@ public:
 private:
     // This is our jank optimization for preventing us from creating a new
     // SDL_Texture every frame if nothing has changed. This is used in draw_map.
-    roguely::common::Dimension current_map_segment_dimension{};
-    roguely::common::Dimension current_full_map_dimension{};
+    Dimension current_map_segment_dimension{};
+    Dimension current_full_map_dimension{};
     SDL_Texture * current_map_segment_texture{};
     SDL_Texture * current_full_map_texture{};
 
@@ -530,7 +520,7 @@ private:
 
 struct MapInfo {
     std::string name{};
-    std::shared_ptr<roguely::map::Map> map{};
+    std::shared_ptr<Map> map{};
 };
 
 class AStar {
@@ -550,9 +540,7 @@ private:
     // Define a typedef for the priority queue entry
     using pq_entry = std::pair<int, std::pair<int, int>>;
 };
-} // namespace roguely::map
 
-namespace roguely::engine {
 class Engine {
 public:
     Engine();
@@ -580,13 +568,11 @@ private:
     void draw_graphic(SDL_Renderer * renderer, const std::string & path, int window_width, int x, int y, bool centered,
                       int scale_factor) const;
 
-    static std::shared_ptr<roguely::map::Map> generate_map(const std::string & name, int map_width, int map_height);
+    static std::shared_ptr<Map> generate_map(const std::string & name, int map_width, int map_height);
 
-    roguely::common::Dimension update_player_viewport(const roguely::common::Point & player_position,
-                                                      const roguely::common::Size & current_map,
-                                                      const roguely::common::Size & initial_view_port);
+    Dimension update_player_viewport(const Point & player_position, const Size & current_map, const Size & initial_view_port);
 
-    std::shared_ptr<roguely::map::Map> find_map(const std::string & name) const {
+    std::shared_ptr<Map> find_map(const std::string & name) const {
         auto it = std::find_if(maps.begin(), maps.end(), [&name](const auto & map) { return map->get_name() == name; });
         if (it != maps.end()) return *it;
         return nullptr;
@@ -603,22 +589,22 @@ private:
     int VIEW_PORT_WIDTH{};
     int VIEW_PORT_HEIGHT{};
 
-    roguely::common::Dimension current_dimension{};
-    roguely::map::MapInfo current_map_info{};
+    Dimension current_dimension{};
+    MapInfo current_map_info{};
 
     SDL_Window * window{};
     SDL_Renderer * renderer{};
     Mix_Music * soundtrack{};
 
     // FIXME: Need to have ability to load multiple fonts
-    std::weak_ptr<roguely::common::Text> default_font{};
+    std::weak_ptr<Text> default_font{};
 
     sol::state lua;
-    std::unique_ptr<roguely::ecs::EntityManager> entity_manager{};
-    std::vector<std::shared_ptr<roguely::common::Sound>> sounds{};
-    std::unordered_map<std::string, std::shared_ptr<roguely::sprites::SpriteSheet>> sprite_sheets{};
-    std::vector<std::shared_ptr<roguely::map::Map>> maps{};
-    std::unordered_map<std::string, std::shared_ptr<roguely::common::Text>> texts{};
+    std::unique_ptr<EntityManager> entity_manager{};
+    std::vector<std::shared_ptr<Sound>> sounds{};
+    std::unordered_map<std::string, std::shared_ptr<SpriteSheet>> sprite_sheets{};
+    std::vector<std::shared_ptr<Map>> maps{};
+    std::unordered_map<std::string, std::shared_ptr<Text>> texts{};
     std::unordered_map<std::string, sol::function> systems{};
 };
-} // namespace roguely::engine
+} // namespace roguely

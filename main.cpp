@@ -7,7 +7,7 @@
 
 int main(int, char **) {
     try {
-        roguely::engine::Engine engine;
+        roguely::Engine engine;
         engine.game_loop();
         return EXIT_SUCCESS;
     } catch (const std::exception & e) {
