@@ -5,6 +5,7 @@
 #endif
 #include <cassert>
 #include <filesystem>
+#include <limits>
 #include <mutex>
 #include <queue>
 #include <random>
@@ -16,6 +17,9 @@
 #endif
 
 namespace roguely {
+
+#pragma mark anon_namespace
+
 namespace {
 std::mutex gen_mut;
 std::mt19937 gen_mt(std::random_device{}());
@@ -43,6 +47,18 @@ struct Defer {
 };
 } // namespace
 
+#pragma mark detail
+
+namespace detail {
+    void Deleter::operator()(Mix_Chunk *p) const { Mix_FreeChunk(p); }
+    void Deleter::operator()(Mix_Music *p) const { Mix_FreeMusic(p); }
+    void Deleter::operator()(SDL_Surface *p) const { SDL_FreeSurface(p); }
+    void Deleter::operator()(SDL_Texture *p) const { SDL_DestroyTexture(p); }
+    void Deleter::operator()(SDL_Renderer *p) const { SDL_DestroyRenderer(p); }
+    void Deleter::operator()(SDL_Window *p) const { SDL_DestroyWindow(p); }
+    void Deleter::operator()(TTF_Font *p) const { TTF_CloseFont(p); }
+} // namespace detail
+
 #pragma mark Id
 
 /* static */ std::atomic_size_t Id::nextId{1u};
@@ -51,13 +67,8 @@ std::string generate_uuid() { return Id().to_string(); }
 
 #pragma mark Text
 
-Text::~Text() {
-    if (text_texture) { SDL_DestroyTexture(text_texture); text_texture = nullptr; }
-    if (font) { TTF_CloseFont(font); font = nullptr; }
-}
-
 int Text::load_font(const std::string & path, int ptsize) {
-    font = TTF_OpenFont(path.c_str(), ptsize);
+    font.reset(TTF_OpenFont(path.c_str(), ptsize));
 
     if (!font) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Unable to load font: %s\n%s", path.c_str(), TTF_GetError());
@@ -68,11 +79,10 @@ int Text::load_font(const std::string & path, int ptsize) {
 }
 
 Size Text::get_text_extents(const std::string & text) {
-    int w{}, h{};
-
-    if (TTF_SizeText(font, text.c_str(), &w, &h) == 0) { return {w, h}; }
-
-    return {};
+    Size ret;
+    if (!font || TTF_SizeText(font.get(), text.c_str(), &ret.width, &ret.height) != 0)
+        ret = Size{}; // clear to 0 on error
+    return ret;
 }
 
 void Text::draw_text(SDL_Renderer * renderer, int x, int y, const std::string & text) {
@@ -84,11 +94,9 @@ void Text::draw_text(SDL_Renderer * renderer, int x, int y, const std::string & 
 
     if (text != t) {
         text = t;
-        if (text_texture) { SDL_DestroyTexture(text_texture); text_texture = nullptr; }
-        SDL_Surface * text_surface = TTF_RenderText_Blended(font, t.c_str(), color);
+        UPtr<SDL_Surface> text_surface{TTF_RenderText_Blended(font.get(), t.c_str(), color)};
         check_sdl_ptr_or_throw(text_surface, "Unable to create surface for text");
-        Defer d1([&text_surface] { SDL_FreeSurface(text_surface); text_surface = nullptr; });
-        text_texture = SDL_CreateTextureFromSurface(renderer, text_surface);
+        text_texture.reset(SDL_CreateTextureFromSurface(renderer, text_surface.get()));
         check_sdl_ptr_or_throw(text_texture, "Unable to create texture for text");
         text_rect = {.x = x, .y = y, .w = text_surface->w, .h = text_surface->h};
     } else {
@@ -96,7 +104,7 @@ void Text::draw_text(SDL_Renderer * renderer, int x, int y, const std::string & 
         text_rect.y = y;
     }
 
-    SDL_RenderCopy(renderer, text_texture, nullptr, &text_rect);
+    SDL_RenderCopy(renderer, text_texture.get(), nullptr, &text_rect);
 }
 
 #pragma mark EntityGroupName
@@ -487,14 +495,14 @@ SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const s
     // println("sprite width: {} | sprite height: {}", sprite_width, sprite_height);
     // println("scale factor: {}", scale_factor);
 
-    auto tileset = IMG_Load(p.c_str());
+    UPtr<SDL_Surface> tileset{IMG_Load(p.c_str())};
     check_sdl_ptr_or_throw(tileset, "Unable to load tileset");
-    spritesheet_texture = SDL_CreateTextureFromSurface(renderer, tileset);
+    spritesheet_texture.reset(SDL_CreateTextureFromSurface(renderer, tileset.get()));
     check_sdl_ptr_or_throw(spritesheet_texture, "Unable to create spritesheet_texture");
     int total_sprites_on_sheet = tileset->w / sw * tileset->h / sh;
     // println("total sprites on sheet: {}", total_sprites_on_sheet);
 
-    SDL_GetTextureColorMod(spritesheet_texture, &o_red, &o_green, &o_blue);
+    SDL_GetTextureColorMod(spritesheet_texture.get(), &o_red, &o_green, &o_blue);
 
     for (int y = 0; y < total_sprites_on_sheet / (sw + sh); ++y) {
         for (int x = 0; x < total_sprites_on_sheet / (sw + sh); ++x) {
@@ -503,12 +511,6 @@ SpriteSheet::SpriteSheet(SDL_Renderer * renderer, const std::string & n, const s
     }
 
     sprites.resize(total_sprites_on_sheet, {0, 0, 0, 0});
-
-    SDL_FreeSurface(tileset);
-}
-
-SpriteSheet::~SpriteSheet() {
-    if (spritesheet_texture) SDL_DestroyTexture(spritesheet_texture);
 }
 
 void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y) const {
@@ -531,7 +533,7 @@ void SpriteSheet::draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int
 
     const SDL_Rect dest{.x = x, .y = y, .w = width, .h = height};
     auto & sprite_rect = sprites[sprite_id];
-    SDL_RenderCopy(renderer, spritesheet_texture, &sprite_rect, &dest);
+    SDL_RenderCopy(renderer, spritesheet_texture.get(), &sprite_rect, &dest);
 }
 
 void SpriteSheet::draw_sprite_sheet(SDL_Renderer * renderer, int x, int y) const {
@@ -539,7 +541,7 @@ void SpriteSheet::draw_sprite_sheet(SDL_Renderer * renderer, int x, int y) const
     int row_height = 0;
 
     // println("scale_factor: {}", scale_factor);
-
+    assert(sprites.size() <= size_t(std::numeric_limits<int>::max()));
     for (size_t i = 0; i < sprites.size(); ++i) {
         // println("col * sprite_width = {}", col * sprite_width);
         // println("col * (sprite_width * scale_factor) = {}", col * (sprite_width * scale_factor));
@@ -575,11 +577,6 @@ sol::table SpriteSheet::get_sprites_as_lua_table(sol::this_state s) const {
 
 #pragma mark Map
 
-Map::~Map() {
-    if (current_map_segment_texture) { SDL_DestroyTexture(current_map_segment_texture); current_map_segment_texture = nullptr; }
-    if (current_full_map_texture) { SDL_DestroyTexture(current_full_map_texture); current_full_map_texture = nullptr; }
-}
-
 void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
                    const std::shared_ptr<SpriteSheet> & sprite_sheet,
                    const std::function<void(int, int, int, int, int, int, int)> & draw_hook) {
@@ -593,20 +590,12 @@ void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
     if (current_map_segment_dimension != dimensions) {
         current_map_segment_dimension = dimensions;
 
-        if (current_map_segment_texture) SDL_DestroyTexture(current_map_segment_texture);
-
-        current_map_segment_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
-                                                        texture_width, texture_height);
+        current_map_segment_texture.reset(SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
+                                                            texture_width, texture_height));
         check_sdl_ptr_or_throw(current_map_segment_texture, "Unable to create current_map_segment_texture");
-        SDL_SetRenderTarget(renderer, current_map_segment_texture);
+        SDL_SetRenderTarget(renderer, current_map_segment_texture.get());
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
-
-        // println("sprite width: {} | sprite height: {}", sprite_width, sprite_height);
-        // println("dimensions.point.x: {} | dimensions.point.y: {}", dimensions.point.x, dimensions.point.y);
-        // println("dimensions.size.width: {} | dimensions.size.height: {}", dimensions.size.width, dimensions.size.height); 
-        // println("map width: {} | map height: {}", map->size2(), map->size1());
-        // println("total sprites: {}", sprite_sheet->get_size_of_sprites());
 
         for (int rows = dimensions.point.y; rows < dimensions.size.height; ++rows) {
             for (int cols = dimensions.point.x; cols < dimensions.size.width; ++cols) {
@@ -628,7 +617,7 @@ void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
 
     SDL_SetRenderTarget(renderer, NULL);
     const SDL_Rect destination{.x = 0, .y = 0, .w = texture_width, .h = texture_height};
-    SDL_RenderCopy(renderer, current_map_segment_texture, NULL, &destination);
+    SDL_RenderCopy(renderer, current_map_segment_texture.get(), NULL, &destination);
 }
 
 void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions, int dest_x, int dest_y, int a,
@@ -636,14 +625,12 @@ void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions, int de
     if (current_full_map_dimension != dimensions) {
         current_full_map_dimension = dimensions;
 
-        if (current_full_map_texture) SDL_DestroyTexture(current_full_map_texture);
-
-        current_full_map_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
+        current_full_map_texture.reset(SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height));
         check_sdl_ptr_or_throw(current_full_map_texture, "Unable to create current_full_map_texture");
-        SDL_SetTextureBlendMode(current_full_map_texture, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderTarget(renderer, current_full_map_texture);
+        SDL_SetTextureBlendMode(current_full_map_texture.get(), SDL_BLENDMODE_BLEND);
+        SDL_SetRenderTarget(renderer, current_full_map_texture.get());
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-        SDL_SetTextureAlphaMod(current_full_map_texture, a);
+        SDL_SetTextureAlphaMod(current_full_map_texture.get(), a);
         SDL_RenderClear(renderer);
 
         for (int rows = 0; rows < height; ++rows) {
@@ -658,7 +645,7 @@ void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions, int de
     SDL_SetRenderTarget(renderer, NULL);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     const SDL_Rect destination{.x = dest_x, .y = dest_y, .w = width, .h = height};
-    SDL_RenderCopy(renderer, current_full_map_texture, NULL, &destination);
+    SDL_RenderCopy(renderer, current_full_map_texture.get(), NULL, &destination);
 }
 
 void Map::calculate_field_of_view(const Dimension & dimensions) {
@@ -829,8 +816,8 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
         lua.create_table_with(1073741906, "up", 1073741905, "down", 1073741904, "left", 1073741903, "right", 119, "w",
                               97, "a", 115, "s", 100, "d", 32, "space");
 
-    window = SDL_CreateWindow(window_title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width,
-                              window_height, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    window.reset(SDL_CreateWindow(window_title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width,
+                                  window_height, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC));
 
     if (!window) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create SDL window: %s", SDL_GetError());
@@ -838,21 +825,22 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
         return 1;
     }
 
-    SDL_Surface * window_icon_surface = IMG_Load(window_icon_path.c_str());
-    check_sdl_ptr_or_throw(window_icon_surface, "Unable to load icon");
-    SDL_SetWindowIcon(window, window_icon_surface);
-    SDL_FreeSurface(window_icon_surface);
+    {
+        UPtr<SDL_Surface> window_icon_surface{IMG_Load(window_icon_path.c_str())};
+        check_sdl_ptr_or_throw(window_icon_surface, "Unable to load icon");
+        SDL_SetWindowIcon(window.get(), window_icon_surface.get());
+    }
 
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
+    renderer.reset(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE));
 
     if (renderer == NULL) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL could not create renderer: %s", SDL_GetError());
-        SDL_DestroyWindow(window);
+        window.reset();
         SDL_Quit();
         return 1;
     }
 
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawBlendMode(renderer.get(), SDL_BLENDMODE_BLEND);
 
     // FIXME: Need to create a way for user defined Text objects
     // std::string font_path = game_config["font_path"];
@@ -863,7 +851,7 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
     sprite_sheets.clear();
     sprite_sheets.try_emplace(game_config["spritesheet_name"],
                               std::make_shared<SpriteSheet>(
-                                  renderer, game_config["spritesheet_name"], game_config["spritesheet_path"],
+                                  renderer.get(), game_config["spritesheet_name"], game_config["spritesheet_path"],
                                   game_config["spritesheet_sprite_width"], game_config["spritesheet_sprite_height"],
                                   game_config["spritesheet_sprite_scale_factor"]));
 
@@ -881,7 +869,7 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
                 if (!std::filesystem::exists(sound_path)) {
                     println("sound file does not exist: {}", sound_path);
                 } else {
-                    Sound s{.name = std::move(sound_name), .sound = Mix_LoadWAV(sound_path.c_str())};
+                    Sound s{.name = std::move(sound_name), .sound{Mix_LoadWAV(sound_path.c_str())}};
                     check_sdl_ptr_or_throw(s.sound, std::format("Unable to load sound \"{}\"", s.name));
                     sounds.push_back(std::make_shared<Sound>(std::move(s)));
                 }
@@ -892,17 +880,16 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
     if (game_config["soundtrack_path"].valid() && game_config["soundtrack_path"].get_type() == sol::type::string) {
         std::string soundtrack_path = game_config["soundtrack_path"];
 
-        soundtrack = Mix_LoadMUS(soundtrack_path.c_str());
+        soundtrack.reset(Mix_LoadMUS(soundtrack_path.c_str()));
         check_sdl_ptr_or_throw(soundtrack, "Unable to load soundtrack");
-        Mix_PlayMusic(soundtrack, 1);
+        Mix_PlayMusic(soundtrack.get(), 1);
     }
 
     return 0;
 }
 
 void Engine::tear_down() {
-    if (soundtrack) { Mix_FreeMusic(soundtrack); soundtrack = nullptr; }
-    for (auto & s : sounds) { if (s->sound) Mix_FreeChunk(s->sound); }
+    soundtrack.reset();
     sounds.clear();
     sprite_sheets.clear();
     maps.clear();
@@ -911,8 +898,8 @@ void Engine::tear_down() {
     entity_manager.reset();
     lua = sol::state{}; // clear lua
 
-    if (renderer) { SDL_DestroyRenderer(renderer); renderer = nullptr; }
-    if (window) { SDL_DestroyWindow(window); window = nullptr; }
+    renderer.reset();
+    window.reset();
 
     Mix_Quit();
     TTF_Quit();
@@ -1020,7 +1007,7 @@ int Engine::game_loop() {
             last_update_time = current_time;
         }
 
-        SDL_RenderClear(renderer);
+        SDL_RenderClear(renderer.get());
 
         // Calculate delta time
         Uint32 current_frame_time = SDL_GetTicks();
@@ -1038,7 +1025,7 @@ int Engine::game_loop() {
             }
         }
 
-        SDL_RenderPresent(renderer);
+        SDL_RenderPresent(renderer.get());
 
         // limit frame rate
         frame_time = SDL_GetTicks() - frame_start;
@@ -1086,13 +1073,13 @@ void Engine::draw_text(const std::string & t, int x, int y, Uint8 r, Uint8 g, Ui
 
     if (!default_font.expired()) {
         const SDL_Color text_color{.r = r, .g = g, .b = b, .a = a};
-        default_font.lock()->draw_text(renderer, x, y, t, text_color);
+        default_font.lock()->draw_text(renderer.get(), x, y, t, text_color);
     }
 }
 
 void Engine::draw_sprite(const std::string & spritesheet_name, int sprite_id, int x, int y, int scale_factor) const {
     if (auto it = sprite_sheets.find(spritesheet_name); it != sprite_sheets.end()) {
-        it->second->draw_sprite(renderer, sprite_id, x, y, scale_factor);
+        it->second->draw_sprite(renderer.get(), sprite_id, x, y, scale_factor);
     }
 }
 
@@ -1261,18 +1248,18 @@ void Engine::setup_lua_api(sol::this_state s) {
                      });
     lua.set_function("draw_sprite_sheet", [&](const std::string & spritesheet_name, int x, int y) {
         auto ss_i = sprite_sheets.find(spritesheet_name);
-        if (ss_i != sprite_sheets.end()) { ss_i->second->draw_sprite_sheet(renderer, x, y); }
+        if (ss_i != sprite_sheets.end()) { ss_i->second->draw_sprite_sheet(renderer.get(), x, y); }
     });
-    lua.set_function("set_draw_color", [&](int r, int g, int b, int a) { set_draw_color(renderer, Uint8(r), Uint8(g), Uint8(b), Uint8(a)); });
-    lua.set_function("draw_point", [&](int x, int y) { draw_point(renderer, x, y); });
-    lua.set_function("draw_rect", [&](int x, int y, int w, int h) { draw_rect(renderer, x, y, w, h); });
-    lua.set_function("draw_filled_rect", [&](int x, int y, int w, int h) { draw_filled_rect(renderer, x, y, w, h); });
+    lua.set_function("set_draw_color", [&](int r, int g, int b, int a) { set_draw_color(renderer.get(), Uint8(r), Uint8(g), Uint8(b), Uint8(a)); });
+    lua.set_function("draw_point", [&](int x, int y) { draw_point(renderer.get(), x, y); });
+    lua.set_function("draw_rect", [&](int x, int y, int w, int h) { draw_rect(renderer.get(), x, y, w, h); });
+    lua.set_function("draw_filled_rect", [&](int x, int y, int w, int h) { draw_filled_rect(renderer.get(), x, y, w, h); });
     lua.set_function("draw_filled_rect_with_color", [&](int x, int y, int w, int h, int r, int g, int b, int a) {
-        draw_filled_rect_with_color(renderer, x, y, w, h, Uint8(r), Uint8(g), Uint8(b), Uint8(a));
+        draw_filled_rect_with_color(renderer.get(), x, y, w, h, Uint8(r), Uint8(g), Uint8(b), Uint8(a));
     });
     lua.set_function("draw_graphic",
                      [&](const std::string & path, int window_width, int x, int y, bool centered, int scale_factor) {
-                         draw_graphic(renderer, path, window_width, x, y, centered, scale_factor);
+                         draw_graphic(renderer.get(), path, window_width, x, y, centered, scale_factor);
                      });
     lua.set_function("play_sound", [&](const std::string & name) { play_sound(name); });
     lua.set_function("get_random_number", [&](int min, int max) { return generate_random_int(min, max); });
@@ -1324,7 +1311,7 @@ void Engine::setup_lua_api(sol::this_state s) {
                 return;
             }
             current_map_info.map->draw_map(
-                renderer, current_dimension, ss_it->second,
+                renderer.get(), current_dimension, ss_it->second,
                 [&](int rows, int cols, int dx, int dy, int cell_id, int light_cell, int scale_factor) {
                     auto draw_map_callback_result =
                         draw_map_callback(rows, cols, dx, dy, cell_id, light_cell, scale_factor);
@@ -1346,7 +1333,7 @@ void Engine::setup_lua_api(sol::this_state s) {
         }
 
         if (current_map_info.name == name) {
-            current_map_info.map->draw_map(renderer, current_dimension, x, y, a, [&](int rows, int cols, int cell_id) {
+            current_map_info.map->draw_map(renderer.get(), current_dimension, x, y, a, [&](int rows, int cols, int cell_id) {
                 auto draw_map_callback_result = draw_map_callback(rows, cols, cell_id);
                 if (!draw_map_callback_result.valid()) {
                     sol::error err = draw_map_callback_result;

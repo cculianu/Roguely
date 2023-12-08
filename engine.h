@@ -24,6 +24,22 @@
 
 namespace roguely {
 
+namespace detail {
+    // A deleter for resleasing resources managed by a unique or shared ptr
+    struct Deleter {
+        void operator()(Mix_Chunk *) const;
+        void operator()(Mix_Music *) const;
+        void operator()(SDL_Surface *) const;
+        void operator()(SDL_Texture *) const;
+        void operator()(SDL_Renderer *) const;
+        void operator()(SDL_Window *) const;
+        void operator()(TTF_Font *) const;
+    };
+} // namespace detail
+
+template <typename T>
+using UPtr = std::unique_ptr<T, detail::Deleter>;
+
 class Id {
     static std::atomic_size_t nextId;
     size_t id{};
@@ -86,24 +102,21 @@ struct Dimension {
 
 struct Sound {
     std::string name;
-    Mix_Chunk * sound;
-
-public:
-    void play() { if (sound != nullptr) Mix_PlayChannel(-1, sound, 0); }
+    UPtr<Mix_Chunk> sound;
+    void play() { if (sound) Mix_PlayChannel(-1, sound.get(), 0); }
 };
 
 class Text {
 public:
-    ~Text();
     int load_font(const std::string & path, int ptsize);
     void draw_text(SDL_Renderer * renderer, int x, int y, const std::string & text);
     void draw_text(SDL_Renderer * renderer, int x, int y, const std::string & text, SDL_Color color);
     Size get_text_extents(const std::string & text);
 
 private:
-    TTF_Font * font{};
-    std::string text{};
-    SDL_Texture * text_texture{};
+    UPtr<TTF_Font> font;
+    std::string text;
+    UPtr<SDL_Texture> text_texture;
     SDL_Rect text_rect{};
 
     SDL_Color text_color{.r = 255, .g = 255, .b = 255, .a = 255};
@@ -350,13 +363,12 @@ public:
 class SpriteSheet {
 public:
     SpriteSheet(SDL_Renderer * renderer, const std::string & n, const std::string & p, int sw, int sh, int sf);
-    ~SpriteSheet();
 
     void draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y) const;
     void draw_sprite(SDL_Renderer * renderer, int sprite_id, int x, int y, int scale_factor) const;
     void draw_sprite_sheet(SDL_Renderer * renderer, int x, int y) const;
 
-    SDL_Texture * get_spritesheet_texture() const { return spritesheet_texture; }
+    SDL_Texture * get_spritesheet_texture() const { return spritesheet_texture.get(); }
 
     std::string get_name() const { return name; }
     int get_sprite_width() const { return sprite_width; }
@@ -371,9 +383,9 @@ public:
     void remove_blocked_sprite(int sprite_id) { blocked_sprite_ids.erase(sprite_id); }
     bool is_sprite_blocked(int sprite_id) const { return blocked_sprite_ids.find(sprite_id) != blocked_sprite_ids.end(); }
 
-    void set_highlight_color(Uint8 r, Uint8 g, Uint8 b) { SDL_SetTextureColorMod(spritesheet_texture, r, g, b); }
+    void set_highlight_color(Uint8 r, Uint8 g, Uint8 b) { SDL_SetTextureColorMod(spritesheet_texture.get(), r, g, b); }
 
-    void reset_highlight_color() { SDL_SetTextureColorMod(spritesheet_texture, o_red, o_green, o_blue); }
+    void reset_highlight_color() { SDL_SetTextureColorMod(spritesheet_texture.get(), o_red, o_green, o_blue); }
 
 private:
     Uint8 o_red{}, o_green{}, o_blue{};
@@ -385,7 +397,7 @@ private:
     int sprite_height{};
     int scale_factor{};
     std::vector<SDL_Rect> sprites;
-    SDL_Texture * spritesheet_texture{};
+    UPtr<SDL_Texture> spritesheet_texture;
 };
 
 class Map {
@@ -393,7 +405,6 @@ public:
     Map() = default;
     Map(const std::string & n, int w, int h, std::shared_ptr<Matrix> m)
         : name(n), width(w), height(h), map(std::move(m)), light_map(std::make_shared<Matrix>(h, w, 0)){}
-    ~Map();
 
     void draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
                   const std::shared_ptr<SpriteSheet> & sprite_sheet,
@@ -432,14 +443,14 @@ private:
     // SDL_Texture every frame if nothing has changed. This is used in draw_map.
     Dimension current_map_segment_dimension{};
     Dimension current_full_map_dimension{};
-    SDL_Texture * current_map_segment_texture{};
-    SDL_Texture * current_full_map_texture{};
+    UPtr<SDL_Texture> current_map_segment_texture;
+    UPtr<SDL_Texture> current_full_map_texture;
 
-    std::string name{};
+    std::string name;
     int width{};
     int height{};
-    std::shared_ptr<Matrix> map{};
-    std::shared_ptr<Matrix> light_map{};
+    std::shared_ptr<Matrix> map;
+    std::shared_ptr<Matrix> light_map;
 };
 
 struct MapInfo {
@@ -523,19 +534,19 @@ private:
     static std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height);
     static void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes);
 
-    SDL_Window * window{};
-    SDL_Renderer * renderer{};
-    Mix_Music * soundtrack{};
+    UPtr<SDL_Window> window;
+    UPtr<SDL_Renderer> renderer;
+    UPtr<Mix_Music> soundtrack;
 
     // FIXME: Need to have ability to load multiple fonts
-    std::weak_ptr<Text> default_font{};
+    std::weak_ptr<Text> default_font;
 
     sol::state lua;
-    std::unique_ptr<EntityManager> entity_manager{};
-    std::vector<std::shared_ptr<Sound>> sounds{};
-    std::unordered_map<std::string, std::shared_ptr<SpriteSheet>> sprite_sheets{};
-    std::vector<std::shared_ptr<Map>> maps{};
-    std::unordered_map<std::string, std::shared_ptr<Text>> texts{};
-    std::unordered_map<std::string, sol::function> systems{};
+    std::unique_ptr<EntityManager> entity_manager;
+    std::vector<std::shared_ptr<Sound>> sounds;
+    std::unordered_map<std::string, std::shared_ptr<SpriteSheet>> sprite_sheets;
+    std::vector<std::shared_ptr<Map>> maps;
+    std::unordered_map<std::string, std::shared_ptr<Text>> texts;
+    std::unordered_map<std::string, sol::function> systems;
 };
 } // namespace roguely
