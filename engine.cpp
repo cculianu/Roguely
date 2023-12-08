@@ -8,6 +8,10 @@
 #include <source_location>
 #include <stdexcept>
 
+#ifdef _MSC_VER
+#pragma warning( disable : 4068 ) /* Disable unknown pragma 'mark' warning */
+#endif
+
 namespace roguely {
 namespace {
 std::mutex gen_mut;

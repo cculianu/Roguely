@@ -1,11 +1,9 @@
 ﻿cmake_minimum_required(VERSION 3.8)
 
-if(DEFINED VCPKG_INSTALLED_DIR)
-    if(WIN32 AND MSVC)
-        cmake_policy(SET CMP0091 NEW)
-        set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "target triplet" FORCE)
-        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    endif()
+if(WIN32)
+    cmake_policy(SET CMP0091 NEW)
+    set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "target triplet" FORCE)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 project(
@@ -50,7 +48,7 @@ endif()
 
 # Set verbose warnings
 if(MSVC)
-  target_compile_options(roguely PRIVATE /W4)
+  target_compile_options(roguely PRIVATE /W3)
 else(GCC OR CLANG)
   target_compile_options(roguely PRIVATE -Wall -Wextra -Wpedantic)
 endif()
