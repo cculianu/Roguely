@@ -58,14 +58,6 @@ public:
 
 using Matrix = GenericMatrix<int>;
 
-namespace level_generation {
-    // Quick and dirty cellular automata that I learned about from YouTube. We can do more but currently are just doing the
-    // very least to get a playable level.
-    int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y);
-    void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes);
-    std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height);
-} // namespace roguely::level_generation
-
 struct Point {
     bool operator==(const Point & p) const { return p.x == x && p.y == y; }
     bool operator!=(const Point & p) const { return !(*this == p); }
@@ -591,6 +583,11 @@ private:
 
     Dimension current_dimension{};
     MapInfo current_map_info{};
+
+    // Quick and dirty cellular automata that I learned about from YouTube. We can do more but currently are just doing the
+    // very least to get a playable level.
+    static std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height);
+    static void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes);
 
     SDL_Window * window{};
     SDL_Renderer * renderer{};

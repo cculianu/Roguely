@@ -24,60 +24,6 @@ int generate_random_int(int min, int max) {
 std::string Id::to_string() const { return std::format("{}", id); }
 std::string generate_uuid() { return Id().to_string(); }
 
-namespace level_generation {
-
-int get_neighbor_wall_count(const Matrix & map, int map_width, int map_height, int x, int y) {
-    int wall_count = 0;
-
-    for (int row = y - 1; row <= y + 1; ++row) {
-        for (int col = x - 1; col <= x + 1; ++col) {
-            if (row >= 1 && col >= 1 && row < map_height - 1 && col < map_width - 1) {
-                if (map(row, col) == 0) ++wall_count;
-            } else {
-                ++wall_count;
-            }
-        }
-    }
-
-    return wall_count;
-}
-
-void perform_cellular_automaton(Matrix & map, int map_width, int map_height, int passes) {
-    for (int p = 0; p < passes; ++p) {
-        const auto & temp_map = map;
-
-        for (int rows = 0; rows < map_height; ++rows) {
-            for (int columns = 0; columns < map_width; ++columns) {
-                const int neighbor_wall_count = get_neighbor_wall_count(temp_map, map_width, map_height, columns, rows);
-
-                if (neighbor_wall_count > 4) {
-                    map(rows, columns) = 0; // 0 = wall
-                } else
-                    map(rows, columns) = 1; // 1 = floor
-            }
-        }
-    }
-}
-
-std::shared_ptr<Matrix> init_cellular_automata(int map_width, int map_height) {
-    assert(map_width >= 0 && map_height >= 0);
-    auto ret = std::make_shared<Matrix>(map_height, map_width);
-    auto & map = *ret;
-
-    for (int r = 0; r < map_height; ++r) {
-        for (int c = 0; c < map_width; ++c) {
-            const int z = generate_random_int(1, 100);
-            if (z > 48) {
-                map(r, c) = 1;
-            } else
-                map(r, c) = 0;
-        }
-    }
-
-    return ret;
-}
-} // namespace roguely::level_generation
-
 int Text::load_font(const std::string & path, int ptsize) {
     font = TTF_OpenFont(path.c_str(), ptsize);
 
@@ -1103,10 +1049,61 @@ void Engine::play_sound(const std::string & name) {
 
 /* static */
 std::shared_ptr<Map> Engine::generate_map(const std::string & name, int map_width, int map_height) {
-    auto map = roguely::level_generation::init_cellular_automata(map_width, map_height);
-    roguely::level_generation::perform_cellular_automaton(*map, map_width, map_height, 10);
+    auto map = init_cellular_automata(map_width, map_height);
+    perform_cellular_automaton(*map, map_width, map_height, 10);
 
     return std::make_shared<Map>(name, map_width, map_height, std::move(map));
+}
+
+/* static */
+std::shared_ptr<Matrix> Engine::init_cellular_automata(int map_width, int map_height) {
+    assert(map_width >= 0 && map_height >= 0);
+    auto ret = std::make_shared<Matrix>(map_height, map_width);
+    auto & map = *ret;
+
+    for (int r = 0; r < map_height; ++r) {
+        for (int c = 0; c < map_width; ++c) {
+            const int z = generate_random_int(1, 100);
+            if (z > 48) {
+                map(r, c) = 1;
+            } else
+                map(r, c) = 0;
+        }
+    }
+
+    return ret;
+}
+
+/* static */
+void Engine::perform_cellular_automaton(Matrix & map, const int map_width, const int map_height, const int passes) {
+    const auto get_neighbor_wall_count = [&map, map_width, map_height](const int x, const int y) {
+        int wall_count = 0;
+
+        for (int row = y - 1; row <= y + 1; ++row) {
+            for (int col = x - 1; col <= x + 1; ++col) {
+                if (row >= 1 && col >= 1 && row < map_height - 1 && col < map_width - 1) {
+                    if (map(row, col) == 0) ++wall_count;
+                } else {
+                    ++wall_count;
+                }
+            }
+        }
+
+        return wall_count;
+    };
+
+    for (int p = 0; p < passes; ++p) {
+        for (int r = 0; r < map_height; ++r) {
+            for (int c = 0; c < map_width; ++c) {
+                const int neighbor_wall_count = get_neighbor_wall_count(c, r);
+
+                if (neighbor_wall_count > 4) {
+                    map(r, c) = 0; // 0 = wall
+                } else
+                    map(r, c) = 1; // 1 = floor
+            }
+        }
+    }
 }
 
 Dimension Engine::update_player_viewport(const Point & player_position, const Size & current_map,
