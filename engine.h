@@ -476,16 +476,19 @@ private:
     using pq_entry = std::pair<int, std::pair<int, int>>;
 };
 
+// Runs the game. This is a singleton; only one of these may exist app-wide.
 class Engine {
+    static std::atomic_int instance_ctr; // enforces singleton
+
 public:
-    Engine();
+    Engine(); // may throw if singleton invariant violated
     ~Engine();
 
-    int game_loop();
+    void game_loop(); // Activates the engine and runs the game loop; throws if there is an error.
 
 private:
     // Internal functions
-    int initialize(sol::table game_config, sol::this_state s);
+    void initialize(sol::table game_config, sol::this_state s);
     void tear_down();
 
     void setup_lua_api(sol::this_state s);

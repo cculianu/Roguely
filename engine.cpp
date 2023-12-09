@@ -11,6 +11,7 @@
 #include <random>
 #include <source_location>
 #include <stdexcept>
+#include <string_view>
 
 #ifdef _MSC_VER
 #pragma warning( disable : 4068 ) /* Disable unknown pragma 'mark' warning */
@@ -769,34 +770,34 @@ std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_
 
 #pragma mark Engine
 
-Engine::Engine() {}
+/* static */ std::atomic_int Engine::instance_ctr{0};
 
-Engine::~Engine() { tear_down(); }
+Engine::Engine() {
+    if (++instance_ctr != 1) {
+        --instance_ctr; // Note: ~Engine d'tor will never run if we throw here, so we must decrement ctr now.
+        throw std::runtime_error("Invariant violated: More than one Engine intances exist!");
+    }
+}
 
-int Engine::initialize(sol::table game_config, sol::this_state) {
-    Mix_OpenAudio(44100, AUDIO_S16SYS, 2, 4096);
+Engine::~Engine() { tear_down(); --instance_ctr; }
+
+void Engine::initialize(sol::table game_config, sol::this_state) {
+    auto throw_if_fail = [](bool failed, std::string_view errMsg, const char *(errFunc)(void)) {
+        if (failed) throw std::runtime_error(std::format("{}: {}", errMsg, errFunc()));
+    };
+    throw_if_fail(Mix_OpenAudio(44100, AUDIO_S16SYS, 2, 4096) != 0,
+                  "Failed to initialize Mix_OpenAudio", &Mix_GetError);
     Mix_Volume(-1, 3);
     Mix_VolumeMusic(5);
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL: %s", SDL_GetError());
-        return -1;
-    }
-
-    if (IMG_Init(IMG_INIT_PNG) < 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL2 IMG: %s", IMG_GetError());
-        return -1;
-    }
-
-    if (TTF_Init() < 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL_ttf: %s", TTF_GetError());
-        return -1;
-    }
-
-    if (Mix_Init(MIX_INIT_MP3) == 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL2 mixer: %s", Mix_GetError());
-        return -1;
-    }
+    throw_if_fail(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0,
+                  "Failed to initialize SDL", &SDL_GetError);
+    throw_if_fail(IMG_Init(IMG_INIT_PNG) < 0,
+                  "Failed to initialize SDL2 IMG", &IMG_GetError);
+    throw_if_fail(TTF_Init() != 0,
+                  "Failed to initialize SDL_ttf", &TTF_GetError);
+    throw_if_fail(Mix_Init(MIX_INIT_MP3) == 0,
+                  "Failed to initialize SDL2 mixer", &Mix_GetError);
 
     entity_manager = std::make_unique<EntityManager>(lua.lua_state());
 
@@ -818,12 +819,7 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
 
     window.reset(SDL_CreateWindow(window_title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width,
                                   window_height, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC));
-
-    if (!window) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create SDL window: %s", SDL_GetError());
-        SDL_Quit();
-        return 1;
-    }
+    check_sdl_ptr_or_throw(window, "Failed to create SDL window");
 
     {
         UPtr<SDL_Surface> window_icon_surface{IMG_Load(window_icon_path.c_str())};
@@ -832,13 +828,7 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
     }
 
     renderer.reset(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE));
-
-    if (renderer == NULL) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL could not create renderer: %s", SDL_GetError());
-        window.reset();
-        SDL_Quit();
-        return 1;
-    }
+    check_sdl_ptr_or_throw(renderer, "SDL could not create renderer");
 
     SDL_SetRenderDrawBlendMode(renderer.get(), SDL_BLENDMODE_BLEND);
 
@@ -884,8 +874,6 @@ int Engine::initialize(sol::table game_config, sol::this_state) {
         check_sdl_ptr_or_throw(soundtrack, "Unable to load soundtrack");
         Mix_PlayMusic(soundtrack.get(), 1);
     }
-
-    return 0;
 }
 
 void Engine::tear_down() {
@@ -907,32 +895,28 @@ void Engine::tear_down() {
     SDL_Quit();
 }
 
-int Engine::game_loop() {
+void Engine::game_loop() {
     tear_down();
+
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::debug, sol::lib::string);
 
     std::string roguely_script = "roguely.lua";
-    if (!std::filesystem::exists(roguely_script)) {
-        println("'roguely.lua' does not exist.");
-        return -1;
-    }
+    if (!std::filesystem::exists(roguely_script))
+        throw std::runtime_error(std::format("'{}' does not exist", roguely_script));
 
     auto game_script = lua.safe_script_file(roguely_script);
 
     if (!game_script.valid()) {
         sol::error err = game_script;
-        println("Lua script error: {}", err.what());
-        return -1;
+        throw std::runtime_error(std::format("Lua script error: {}", err.what()));
     }
 
     auto game_config = lua.get<sol::table>("Game");
 
-    if (!(game_config.valid() && check_game_config(game_config, lua.lua_state()))) {
-        println("game script does not define the 'Game' configuration table.");
-        return -1;
-    }
+    if (!game_config.valid() || !check_game_config(game_config, lua.lua_state()))
+        throw std::runtime_error("game script does not define the 'Game' configuration table properly.");
 
-    if (initialize(game_config, lua.lua_state()) < 0) return -1;
+    initialize(game_config, lua.lua_state()); // may throw
 
     setup_lua_api(lua.lua_state());
 
@@ -985,8 +969,7 @@ int Engine::game_loop() {
                                                                                        lua.lua_state()));
                 if (!system_result.valid()) {
                     sol::error err = system_result;
-                    println("Lua script error: {}", err.what());
-                    return -1;
+                    throw std::runtime_error(std::format("Lua script error: {}", err.what()));
                 }
             }
         }
@@ -1031,39 +1014,29 @@ int Engine::game_loop() {
         frame_time = SDL_GetTicks() - frame_start;
         if (frame_delay > frame_time) { SDL_Delay(frame_delay - frame_time); }
     }
-
-    return 0;
 }
 
 bool Engine::check_game_config(sol::table game_config, sol::this_state) const {
-    bool result = true;
-
-    auto title = game_config["window_title"];
-    auto window_width = game_config["window_width"];
-    auto window_height = game_config["window_height"];
-    auto window_icon_path = game_config["window_icon_path"];
-    auto font_path = game_config["font_path"];
-    auto spritesheet_name = game_config["spritesheet_name"];
-    auto spritesheet_path = game_config["spritesheet_path"];
-    auto spritesheet_sprite_width = game_config["spritesheet_sprite_width"];
-    auto spritesheet_sprite_height = game_config["spritesheet_sprite_height"];
-    auto spritesheet_sprite_scale_factor = game_config["spritesheet_sprite_scale_factor"];
-    auto sounds = game_config["sounds"];
-
-    if (!(title.valid() && title.get_type() == sol::type::string)) return false;
-    if (!(window_width.valid() && window_width.get_type() == sol::type::number)) return false;
-    if (!(window_height.valid() && window_height.get_type() == sol::type::number)) return false;
-    if (!(font_path.valid() && font_path.get_type() == sol::type::string)) return false;
-    if (!(spritesheet_path.valid() && spritesheet_path.get_type() == sol::type::string)) return false;
-    if (!(sounds.valid() && sounds.get_type() == sol::type::table)) return false;
-    if (!(window_icon_path.valid() && window_icon_path.get_type() == sol::type::string)) return false;
-    if (!(spritesheet_name.valid() && spritesheet_name.get_type() == sol::type::string)) return false;
-    if (!(spritesheet_sprite_width.valid() && spritesheet_sprite_width.get_type() == sol::type::number)) return false;
-    if (!(spritesheet_sprite_height.valid() && spritesheet_sprite_height.get_type() == sol::type::number)) return false;
-    if (!(spritesheet_sprite_scale_factor.valid() && spritesheet_sprite_scale_factor.get_type() == sol::type::number))
-        return false;
-
-    return result;
+    // Checks that some keys we expect in the game_config table exist, are valid, and are of the expected type
+    using RequiredType = std::pair<const char *, sol::type>;
+    const RequiredType req_types[] = {
+        { "window_title", sol::type::string },
+        { "window_width", sol::type::number },
+        { "window_height", sol::type::number },
+        { "window_icon_path", sol::type::string },
+        { "font_path", sol::type::string },
+        { "spritesheet_name", sol::type::string },
+        { "spritesheet_path", sol::type::string },
+        { "spritesheet_sprite_width", sol::type::number },
+        { "spritesheet_sprite_height", sol::type::number },
+        { "spritesheet_sprite_scale_factor", sol::type::number },
+        { "sounds", sol::type::table },
+    };
+    for (const auto & [name, type] : req_types) {
+        const auto obj = game_config[name];
+        if (!obj.valid() || obj.get_type() != type) return false;
+    }
+    return true;
 }
 
 void Engine::draw_text(const std::string & t, int x, int y) const { draw_text(t, x, y, 255, 255, 255, 255); }
