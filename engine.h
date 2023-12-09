@@ -387,6 +387,8 @@ public:
 
     void reset_highlight_color() { SDL_SetTextureColorMod(spritesheet_texture.get(), o_red, o_green, o_blue); }
 
+    Point map_to_world(int x, int y, const Dimension & dimensions) const;
+
 private:
     Uint8 o_red{}, o_green{}, o_blue{};
 
@@ -420,17 +422,6 @@ public:
     auto get_height() const { return height; }
     auto get_map() const { return map; }
     auto get_light_map() const { return light_map; }
-
-    static auto map_to_world(int x, int y, Dimension dimensions, const SpriteSheet & sprite_sheet) {
-        int scale_factor = sprite_sheet.get_scale_factor();
-        int sprite_width = sprite_sheet.get_sprite_width();
-        int sprite_height = sprite_sheet.get_sprite_height();
-
-        int dx = (x * sprite_width * scale_factor) - (dimensions.point.x * sprite_width * scale_factor);
-        int dy = (y * sprite_height * scale_factor) - (dimensions.point.y * sprite_height * scale_factor);
-
-        return Point{dx, dy};
-    }
 
     Point get_random_point(const std::set<int> & off_limit_sprites_ids) const;
 

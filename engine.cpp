@@ -576,6 +576,16 @@ sol::table SpriteSheet::get_sprites_as_lua_table(sol::this_state s) const {
     return sprites_table;
 }
 
+Point SpriteSheet::map_to_world(const int x, const int y, const Dimension & dimensions) const {
+    const int scale_factor = get_scale_factor();
+    const int sprite_width = get_sprite_width();
+    const int sprite_height = get_sprite_height();
+
+    const int dx = (x * sprite_width * scale_factor) - (dimensions.point.x * sprite_width * scale_factor);
+    const int dy = (y * sprite_height * scale_factor) - (dimensions.point.y * sprite_height * scale_factor);
+    return Point{.x = dx, .y = dy};
+}
+
 #pragma mark Map
 
 void Map::draw_map(SDL_Renderer * renderer, const Dimension & dimensions,
@@ -1442,12 +1452,10 @@ void Engine::setup_lua_api(sol::this_state s) {
     lua.set_function("map_to_world", [&](int x, int y, const std::string & ss_name, sol::this_state s) {
         sol::state_view lua(s);
         sol::table table = lua.create_table();
-        if (current_map_info.map != nullptr) {
-            if (auto ss_it = sprite_sheets.find(ss_name); ss_it != sprite_sheets.end()) {
-                auto point = current_map_info.map->map_to_world(x, y, current_dimension, *(ss_it->second));
-                table.set("x", point.x);
-                table.set("y", point.y);
-            }
+        if (auto ss_it = sprite_sheets.find(ss_name); ss_it != sprite_sheets.end()) {
+            auto point = ss_it->second->map_to_world(x, y, current_dimension);
+            table.set("x", point.x);
+            table.set("y", point.y);
         }
         return table;
     });
