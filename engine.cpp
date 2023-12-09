@@ -580,10 +580,10 @@ Point SpriteSheet::map_to_world(const int x, const int y, const Dimension & dime
     const int scale_factor = get_scale_factor();
     const int sprite_width = get_sprite_width();
     const int sprite_height = get_sprite_height();
-
-    const int dx = (x * sprite_width * scale_factor) - (dimensions.point.x * sprite_width * scale_factor);
-    const int dy = (y * sprite_height * scale_factor) - (dimensions.point.y * sprite_height * scale_factor);
-    return Point{.x = dx, .y = dy};
+    return {
+        .x = (x * sprite_width * scale_factor) - (dimensions.point.x * sprite_width * scale_factor),
+        .y = (y * sprite_height * scale_factor) - (dimensions.point.y * sprite_height * scale_factor)
+    };
 }
 
 #pragma mark Map
