@@ -680,7 +680,7 @@ Point Map::get_random_point(const std::set<int> & off_limit_sprites_ids) const {
     if (width <= 0 || height <= 0) { throw std::runtime_error("Empty map"); }
 
     if (off_limit_sprites_ids.empty()) {
-        return Point{.x = generate_random_int(0, height - 1), .y = generate_random_int(0, width - 1)};
+        return Point{.x = generate_random_int(0, width - 1), .y = generate_random_int(0, height - 1)};
     }
 
     size_t maxAttempts = static_cast<size_t>(height) * static_cast<size_t>(width);

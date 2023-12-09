@@ -421,7 +421,7 @@ public:
     auto get_map() const { return map; }
     auto get_light_map() const { return light_map; }
 
-    auto map_to_world(int x, int y, Dimension dimensions, const SpriteSheet & sprite_sheet) const {
+    static auto map_to_world(int x, int y, Dimension dimensions, const SpriteSheet & sprite_sheet) {
         int scale_factor = sprite_sheet.get_scale_factor();
         int sprite_width = sprite_sheet.get_sprite_width();
         int sprite_height = sprite_sheet.get_sprite_height();
