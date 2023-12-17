@@ -449,23 +449,10 @@ struct MapInfo {
     std::shared_ptr<Map> map{};
 };
 
-class AStar {
-public:
-    AStar() {}
-
-    std::vector<std::pair<int, int>> FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col) const;
-
-private:
-    // Heuristic function for estimating the distance between two points
-    int heuristic(int x1, int y1, int x2, int y2) const { return std::abs(x1 - x2) + std::abs(y1 - y2); }
-
-    // Define the possible movements (up, down, left, right)
-    inline static const int dx[4] = {-1, 1,  0, 0};
-    inline static const int dy[4] = { 0, 0, -1, 1};
-
-    // Define a typedef for the priority queue entry
-    using pq_entry = std::pair<int, std::pair<int, int>>;
-};
+// AStar path finding algorithm
+namespace AStar {
+std::vector<std::pair<int, int>> FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col);
+} // namespace AStar
 
 // Runs the game. This is a singleton; only one of these may exist app-wide.
 class Engine {

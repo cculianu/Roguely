@@ -711,7 +711,21 @@ Point Map::get_random_point(const std::set<int> & off_limit_sprites_ids) const {
 
 #pragma mark AStar
 
-std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col) const {
+namespace AStar {
+
+    namespace {
+        // Heuristic function for estimating the distance between two points
+        inline int heuristic(int x1, int y1, int x2, int y2) { return std::abs(x1 - x2) + std::abs(y1 - y2); }
+
+        // Define the possible movements (up, down, left, right)
+        inline static constexpr int dx[4] = {-1, 1,  0, 0};
+        inline static constexpr int dy[4] = { 0, 0, -1, 1};
+
+        // Define a typedef for the priority queue entry
+        using pq_entry = std::pair<int, std::pair<int, int>>;
+    } // namespace
+
+std::vector<std::pair<int, int>> FindPath(const Matrix & grid, int start_row, int start_col, int goal_row, int goal_col) {
     std::vector<std::pair<int, int>> path;
 
     // Check if the starting position is a zero
@@ -777,6 +791,7 @@ std::vector<std::pair<int, int>> AStar::FindPath(const Matrix & grid, int start_
     path.clear();
     return path;
 }
+} // namespace AStar
 
 #pragma mark Engine
 
